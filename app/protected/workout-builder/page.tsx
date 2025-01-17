@@ -188,9 +188,10 @@ function WorkoutBuilderContent() {
       {/* Page Content */}
       <div className="container mx-auto p-6">
         <div className="max-w-4xl mx-auto">
-          {/* Top Header with X, Name, and Create */}
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex items-center gap-2">
+          {/* Mobile Header */}
+          <div className="flex flex-col gap-4 mb-6">
+            {/* Top Row - X and Create */}
+            <div className="flex items-center justify-between">
               <Button
                 variant="ghost"
                 size="icon"
@@ -199,7 +200,25 @@ function WorkoutBuilderContent() {
               >
                 <X className="h-4 w-4" />
               </Button>
-              <div className="flex gap-2">
+              <Button 
+                variant="default" 
+                size="lg"
+                disabled={exercises.length === 0 || !workoutName.trim()}
+                onClick={handleCreateWorkout}
+              >
+                Create Workout
+              </Button>
+            </div>
+
+            {/* Second Row - Name and Badges */}
+            <div className="flex flex-col gap-4">
+              <Input
+                placeholder="Enter workout name..."
+                value={workoutName}
+                onChange={(e) => setWorkoutName(e.target.value)}
+                className="text-center text-lg"
+              />
+              <div className="flex flex-wrap gap-2 justify-center">
                 {muscleGroups.map(groupId => {
                   const group = muscleGroupConfig.find(g => g.id === groupId)
                   return group ? (
@@ -210,22 +229,6 @@ function WorkoutBuilderContent() {
                 })}
               </div>
             </div>
-            <div className="flex-1">
-              <Input
-                placeholder="Enter workout name..."
-                value={workoutName}
-                onChange={(e) => setWorkoutName(e.target.value)}
-                className="text-center text-lg max-w-sm mx-auto"
-              />
-            </div>
-            <Button 
-              variant="default" 
-              size="lg"
-              disabled={exercises.length === 0 || !workoutName.trim()}
-              onClick={handleCreateWorkout}
-            >
-              Create Workout
-            </Button>
           </div>
 
           {/* Add Exercise Button Row */}
@@ -281,25 +284,27 @@ function WorkoutBuilderContent() {
           <Drawer.Root open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
             <Drawer.Portal>
               <Drawer.Overlay className="fixed inset-0 bg-black/40" />
-              <Drawer.Content className="bg-background fixed bottom-0 left-[240px] right-0 mt-24 rounded-t-[10px] flex flex-col">
-                <div className="p-8">
+              <Drawer.Content className="bg-background fixed bottom-0 left-0 right-0 rounded-t-[10px] flex flex-col lg:left-[240px] h-[60vh]">
+                <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-muted my-4" />
+                <div className="p-6 flex-1 overflow-auto">
                   <Drawer.Title className="text-lg font-semibold mb-6">
                     {editingIndex !== null ? 'Edit Exercise' : 'Add Exercise'}
                   </Drawer.Title>
-                  <div className="grid grid-cols-2 gap-12">
-                    {/* Left side - Exercise Form */}
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="name">Exercise Name</Label>
-                        <Input
-                          id="name"
-                          value={currentExercise.name}
-                          onChange={(e) => setCurrentExercise({
-                            ...currentExercise,
-                            name: e.target.value
-                          })}
-                        />
-                      </div>
+
+                  {/* Exercise Form */}
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <Label htmlFor="name">Exercise Name</Label>
+                      <Input
+                        id="name"
+                        value={currentExercise.name}
+                        onChange={(e) => setCurrentExercise({
+                          ...currentExercise,
+                          name: e.target.value
+                        })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="sets">Sets</Label>
                         <Input
@@ -324,93 +329,90 @@ function WorkoutBuilderContent() {
                           })}
                         />
                       </div>
-                      <div>
-                        <Label htmlFor="rest">Rest (seconds)</Label>
-                        <Input
-                          id="rest"
-                          type="number"
-                          value={currentExercise.defaultRest}
-                          onChange={(e) => setCurrentExercise({
-                            ...currentExercise,
-                            defaultRest: parseInt(e.target.value)
-                          })}
-                        />
-                      </div>
-                      <Button 
-                        className="w-full" 
-                        onClick={handleSubmitExercise}
-                        disabled={!currentExercise.name}
-                      >
-                        {editingIndex !== null ? 'Update Exercise' : 'Add Exercise'}
-                      </Button>
                     </div>
-
-                    {/* Right side - Available Exercises */}
                     <div>
-                      {/* Muscle Group Badges */}
-                      <div className="mb-4">
-                        <Label className="mb-2 block">Filter by Muscle Group</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {muscleGroupConfig.map(group => (
-                            <Badge
-                              key={group.id}
-                              variant={selectedMuscleFilters.includes(group.id) ? "default" : "secondary"}
-                              className="cursor-pointer hover:bg-accent"
-                              onClick={() => toggleMuscleFilter(group.id)}
-                            >
-                              {group.label}
-                              {selectedMuscleFilters.includes(group.id) && (
-                                <span className="ml-1 hover:text-destructive">×</span>
-                              )}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
+                      <Label htmlFor="rest">Rest (seconds)</Label>
+                      <Input
+                        id="rest"
+                        type="number"
+                        value={currentExercise.defaultRest}
+                        onChange={(e) => setCurrentExercise({
+                          ...currentExercise,
+                          defaultRest: parseInt(e.target.value)
+                        })}
+                      />
+                    </div>
+                    <Button 
+                      className="w-full" 
+                      onClick={handleSubmitExercise}
+                      disabled={!currentExercise.name}
+                    >
+                      {editingIndex !== null ? 'Update Exercise' : 'Add Exercise'}
+                    </Button>
+                  </div>
 
-                      {/* Exercise Cards */}
-                      <ScrollArea className="h-[500px]">
-                        <div className="space-y-6">
-                          {Array.from(groupExercisesByMuscle(filteredExercises)).map(([muscleId, exercises]) => {
-                            const muscleGroup = muscleGroupConfig.find(g => g.id === muscleId)
-                            return muscleGroup ? (
-                              <div key={muscleId}>
-                                <h3 className="font-semibold mb-3">{muscleGroup.label} Exercises</h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                  {exercises.map((exercise, index) => (
-                                    <Card
-                                      key={`${muscleId}-${index}`}
-                                      className={cn(
-                                        "p-3 cursor-pointer hover:bg-accent",
-                                        currentExercise.name === exercise.name && "border-primary"
-                                      )}
-                                      onClick={() => setCurrentExercise({
-                                        ...exercise,
-                                        defaultSets: currentExercise.defaultSets,
-                                        defaultReps: currentExercise.defaultReps,
-                                        defaultRest: currentExercise.defaultRest
-                                      })}
-                                    >
-                                      <h3 className="font-medium">{exercise.name}</h3>
-                                      <div className="flex flex-wrap gap-1 mt-1">
-                                        {exercise.muscleGroups.map(groupId => {
-                                          const group = muscleGroupConfig.find(g => g.id === groupId)
-                                          return group ? (
-                                            <Badge key={groupId} variant="outline" className="text-xs">
-                                              {group.label}
-                                            </Badge>
-                                          ) : null
-                                        })}
-                                      </div>
-                                    </Card>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null
-                          })}
-                        </div>
-                      </ScrollArea>
+                  {/* Muscle Group Filter */}
+                  <div className="mb-6">
+                    <Label className="mb-2 block">Filter by Muscle Group</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {muscleGroupConfig.map(group => (
+                        <Badge
+                          key={group.id}
+                          variant={selectedMuscleFilters.includes(group.id) ? "default" : "secondary"}
+                          className="cursor-pointer hover:bg-accent"
+                          onClick={() => toggleMuscleFilter(group.id)}
+                        >
+                          {group.label}
+                          {selectedMuscleFilters.includes(group.id) && (
+                            <span className="ml-1 hover:text-destructive">×</span>
+                          )}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
+
+                  {/* Exercise Cards */}
+                  <ScrollArea className="h-[calc(80vh-24rem)]">
+                    <div className="space-y-6">
+                      {Array.from(groupExercisesByMuscle(filteredExercises)).map(([muscleId, exercises]) => {
+                        const muscleGroup = muscleGroupConfig.find(g => g.id === muscleId)
+                        return muscleGroup ? (
+                          <div key={muscleId}>
+                            <h3 className="font-semibold mb-3">{muscleGroup.label} Exercises</h3>
+                            <div className="grid grid-cols-1 gap-3">
+                              {exercises.map((exercise, index) => (
+                                <Card
+                                  key={`${muscleId}-${index}`}
+                                  className={cn(
+                                    "p-3 cursor-pointer hover:bg-accent",
+                                    currentExercise.name === exercise.name && "border-primary"
+                                  )}
+                                  onClick={() => setCurrentExercise({
+                                    ...exercise,
+                                    defaultSets: currentExercise.defaultSets,
+                                    defaultReps: currentExercise.defaultReps,
+                                    defaultRest: currentExercise.defaultRest
+                                  })}
+                                >
+                                  <h3 className="font-medium">{exercise.name}</h3>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {exercise.muscleGroups.map(groupId => {
+                                      const group = muscleGroupConfig.find(g => g.id === groupId)
+                                      return group ? (
+                                        <Badge key={groupId} variant="outline" className="text-xs">
+                                          {group.label}
+                                        </Badge>
+                                      ) : null
+                                    })}
+                                  </div>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null
+                      })}
+                    </div>
+                  </ScrollArea>
                 </div>
               </Drawer.Content>
             </Drawer.Portal>

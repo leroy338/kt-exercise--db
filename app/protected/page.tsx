@@ -1,3 +1,5 @@
+import { WorkoutStatsChart } from "@/app/protected/components/workout-stats-chart"
+
 export default function ProtectedHome() {
   return (
     <div className="container mx-auto p-6">
@@ -6,6 +8,9 @@ export default function ProtectedHome() {
         <p className="text-muted-foreground">
           Track your workouts and monitor your progress
         </p>
+      </div>
+      <div className="mt-8">
+        <WorkoutStatsChart />
       </div>
     </div>
   )

@@ -63,6 +63,7 @@ export default function SavedWorkouts() {
   const [totalCount, setTotalCount] = useState(0)
   const ITEMS_PER_PAGE = 10
   const [expandedTableWorkoutId, setExpandedTableWorkoutId] = useState<number | null>(null)
+  const [currentWorkoutIndex, setCurrentWorkoutIndex] = useState(0)
 
   useEffect(() => {
     async function fetchWorkouts() {
@@ -204,14 +205,11 @@ export default function SavedWorkouts() {
   }
 
   const scroll = (direction: 'left' | 'right') => {
-    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
-    if (!scrollArea) return
-
-    const scrollAmount = direction === 'left' 
-      ? -scrollArea.clientWidth 
-      : scrollArea.clientWidth
-
-    scrollArea.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+    if (direction === 'left') {
+      setCurrentWorkoutIndex(prev => Math.max(0, prev - 1))
+    } else {
+      setCurrentWorkoutIndex(prev => Math.min(workouts.length - 1, prev + 1))
+    }
   }
 
   const handleCardClick = (workoutId: number, e: React.MouseEvent) => {
@@ -228,26 +226,23 @@ export default function SavedWorkouts() {
       <div className="max-w-full">
         <h1 className="text-2xl font-bold mb-6">Recent Workouts</h1>
         
-        <div className="relative px-8">
+        <div className="relative px-2 md:px-4">
           <ScrollArea className="w-full">
-            <div 
-              ref={scrollContainerRef}
-              className="flex space-x-4 pb-4"
-            >
-              {workouts.map((workout) => (
+            <div className="flex space-x-4 pb-4">
+              {workouts.slice(currentWorkoutIndex, currentWorkoutIndex + 1).map((workout) => (
                 <Card 
                   key={`workout-${workout.workout_id}`}
-                  className="p-4 hover:bg-muted/50 transition-colors shrink-0 w-[calc(100vw-3rem)] sm:w-[calc(50vw-3rem)] lg:w-[calc(33.333vw-3rem)]"
+                  className="p-2 md:p-4 hover:bg-muted/50 transition-colors shrink-0 w-[85vw] md:w-[calc(100vw-3rem)]"
                   onClick={(e) => handleCardClick(workout.workout_id, e)}
                 >
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-1 md:mb-2">
                     <div>
-                      <h3 className="font-semibold truncate">{workout.workout_name}</h3>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">
+                      <h3 className="font-semibold truncate text-[13px] md:text-base">{workout.workout_name}</h3>
+                      <div className="flex items-center gap-1 md:gap-2">
+                        <Badge variant="outline" className="text-[11px] md:text-sm">
                           {workoutTypes.find(t => t.id === workout.workout_type)?.label}
                         </Badge>
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-[11px] md:text-sm text-muted-foreground">
                           {workout.count} exercises • {new Date(workout.created_at).toLocaleDateString()}
                         </span>
                       </div>
@@ -256,26 +251,26 @@ export default function SavedWorkouts() {
                       variant="ghost" 
                       size="icon"
                       onClick={() => handleStartWorkout(workout.workout_id)}
-                      className="shrink-0"
+                      className="shrink-0 h-8 w-8 md:h-10 md:w-10"
                     >
-                      <Play className="h-4 w-4" />
+                      <Play className="h-3 w-3 md:h-4 md:w-4" />
                     </Button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mb-2">
+                  <div className="flex flex-wrap gap-1 md:gap-2 mb-1 md:mb-2">
                     {Array.from(new Set(workout.exercises.map(e => e.muscle_group))).map(group => (
-                      <Badge key={group} variant="secondary">
+                      <Badge key={group} variant="secondary" className="text-[11px] md:text-sm">
                         {muscleGroups.find(g => g.id === group)?.label}
                       </Badge>
                     ))}
                   </div>
 
                   {expandedWorkoutId === workout.workout_id && (
-                    <div className="mt-4 space-y-2 border-t pt-4">
+                    <div className="mt-2 md:mt-4 space-y-1 md:space-y-2 border-t pt-2 md:pt-4">
                       {workout.exercises.map((exercise, index) => (
                         <div 
                           key={`${workout.workout_id}-${exercise.exercise_name}-${index}`}
-                          className="flex justify-between items-center text-sm"
+                          className="flex justify-between items-center text-[11px] md:text-sm"
                         >
                           <span className="font-medium">{exercise.exercise_name}</span>
                           <span className="text-muted-foreground">
@@ -295,16 +290,18 @@ export default function SavedWorkouts() {
               <Button
                 variant="outline"
                 size="icon"
-                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background shadow-md"
+                className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full bg-background shadow-md"
                 onClick={() => scroll('left')}
+                disabled={currentWorkoutIndex === 0}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
                 size="icon"
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background shadow-md"
+                className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-background shadow-md"
                 onClick={() => scroll('right')}
+                disabled={currentWorkoutIndex === workouts.length - 1}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -313,9 +310,9 @@ export default function SavedWorkouts() {
         </div>
 
         <div className="mt-12">
-          <div className="flex items-center justify-between mb-6">
+          <div className="space-y-4 mb-6">
             <h2 className="text-xl font-semibold">Exercise History</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant={selectedType === null ? "secondary" : "outline"}
                 onClick={() => setSelectedType(null)}
@@ -340,10 +337,10 @@ export default function SavedWorkouts() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Workout Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Exercise Count</TableHead>
-                  <TableHead className="text-right">Date</TableHead>
+                  <TableHead className="text-xs sm:text-sm">Workout Name</TableHead>
+                  <TableHead className="hidden sm:table-cell">Type</TableHead>
+                  <TableHead className="hidden md:table-cell">Exercise Count</TableHead>
+                  <TableHead className="text-right text-xs sm:text-sm">Date</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -358,14 +355,16 @@ export default function SavedWorkouts() {
                           expandedTableWorkoutId === workout.workout_id ? null : workout.workout_id
                         )}
                       >
-                        <TableCell className="font-medium">
+                        <TableCell className="font-medium text-xs sm:text-sm">
                           {workout.workout_name}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           {workoutTypes.find(t => t.id === workout.workout_type)?.label}
                         </TableCell>
-                        <TableCell>{workout.exercises.length} exercises</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="hidden md:table-cell">
+                          {workout.exercises.length} exercises
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
                           {new Date(workout.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
@@ -384,10 +383,10 @@ export default function SavedWorkouts() {
                               {workout.exercises.map((exercise, index) => (
                                 <div 
                                   key={`${workout.workout_id}-exercise-${index}`}
-                                  className="grid grid-cols-4 gap-4 px-4 py-2"
+                                  className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 sm:p-4 text-[11px] sm:text-sm"
                                 >
-                                  <div className="font-medium">{exercise.exercise_name}</div>
-                                  <div className="text-muted-foreground">
+                                  <div className="font-medium truncate">{exercise.exercise_name}</div>
+                                  <div className="text-muted-foreground truncate">
                                     {muscleGroups.find(g => g.id === exercise.muscle_group)?.label}
                                   </div>
                                   <div className="text-right text-muted-foreground">

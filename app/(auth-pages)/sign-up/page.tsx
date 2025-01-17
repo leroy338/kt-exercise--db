@@ -19,10 +19,10 @@ export default async function Signup(props: {
   }
 
   return (
-    <>
-      <form className="flex flex-col min-w-64 max-w-64 mx-auto">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      <form className="flex-1 flex flex-col min-w-64 max-w-64 justify-center">
         <h1 className="text-2xl font-medium">Sign up</h1>
-        <p className="text-sm text text-foreground">
+        <p className="text-sm text-foreground">
           Already have an account?{" "}
           <Link className="text-primary font-medium underline" href="/sign-in">
             Sign in
@@ -46,6 +46,6 @@ export default async function Signup(props: {
         </div>
       </form>
       <SmtpMessage />
-    </>
+    </div>
   );
 }

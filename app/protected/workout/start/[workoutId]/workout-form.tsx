@@ -14,6 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { toast } from "@/components/ui/use-toast"
+import React from "react"
 
 interface Exercise {
   exercise_name: string
@@ -24,6 +26,7 @@ interface Exercise {
   }[]
   target_sets: number
   target_reps: number
+  muscle_group: string
 }
 
 interface WorkoutLog {
@@ -46,7 +49,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
 
       const { data, error } = await supabase
         .from('saved_workouts')
-        .select('workout_id, workout_name, exercise_name, sets, reps')
+        .select('workout_id, workout_name, exercise_name, sets, reps, muscle_group')
         .eq('workout_id', workoutId)
         .eq('user_id', user.id)
 
@@ -63,6 +66,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
             exercise_name: exercise.exercise_name,
             target_sets: exercise.sets,
             target_reps: exercise.reps,
+            muscle_group: exercise.muscle_group,
             sets: Array.from({ length: exercise.sets }, (_, i) => ({
               set_number: i + 1,
               reps_completed: 0,
@@ -90,28 +94,65 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
   }
 
   const handleComplete = async () => {
-    if (!workout) return
-
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.error('No user found')
+        toast({
+          title: "Not authenticated",
+          description: "Please sign in to log workouts",
+          variant: "destructive"
+        })
         return
       }
 
+      // Get the workout template details
+      const { data: workoutTemplate } = await supabase
+        .from('saved_workouts')
+        .select('workout_name, workout_type')
+        .eq('workout_id', workoutId)
+        .limit(1)
+        .single()
+
+      if (!workoutTemplate) {
+        throw new Error('Workout template not found')
+      }
+
+      // Insert all exercises as separate log entries
       const { error } = await supabase
         .from('workout_logs')
-        .insert({
-          user_id: user.id,
-          workout_id: Number(workout.workout_id),
-          exercise_logs: { exercises: workout.exercises }
-        })
+        .insert(
+          workout!.exercises.flatMap(exercise => 
+            exercise.sets.map(set => ({
+              workout_id: parseInt(workoutId),
+              workout_name: workoutTemplate.workout_name,
+              workout_type: workoutTemplate.workout_type,
+              exercise_name: exercise.exercise_name,
+              sets: exercise.target_sets,
+              reps: exercise.target_reps,
+              rest: 60, // default rest time
+              muscle_group: exercise.muscle_group,
+              user_id: user.id,
+              weight: set.weight || 0,
+              reps_completed: set.reps_completed || 0,
+            }))
+          )
+        )
 
       if (error) throw error
 
-      router.push('/protected/dashboard')
+      toast({
+        title: "Workout Completed",
+        description: "Your workout has been logged successfully."
+      })
+      
+      router.push('/protected/workout-history')
     } catch (err) {
-      console.error('Error saving workout:', err)
+      console.error('Error logging workout:', err)
+      toast({
+        title: "Error",
+        description: "Failed to log workout",
+        variant: "destructive"
+      })
     }
   }
 
@@ -134,9 +175,8 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
           </TableHeader>
           <TableBody>
             {workout.exercises.map((exercise, exerciseIndex) => (
-              <>
+              <React.Fragment key={exerciseIndex}>
                 <TableRow 
-                  key={exerciseIndex}
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => setExpandedExercise(
                     expandedExercise === exerciseIndex ? null : exerciseIndex
@@ -191,7 +231,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                     </TableCell>
                   </TableRow>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </TableBody>
         </Table>
