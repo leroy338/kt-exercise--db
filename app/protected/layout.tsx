@@ -8,10 +8,12 @@ export default function ProtectedLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <HeaderAuth className="hidden md:block" />
+      <HeaderAuth />
       <Sidebar />
-      <main className="lg:pl-64 pt-14">
-        {children}
+      <main className="w-full pt-14 px-4 md:px-6 lg:pl-64">
+        <div className="max-w-full mx-auto">
+          {children}
+        </div>
       </main>
     </div>
   )
