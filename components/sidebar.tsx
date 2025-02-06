@@ -32,6 +32,7 @@ const workoutNavItems = [
   { href: "/protected/builder", label: "Builder", icon: Plus },
   { href: "/protected/saved-workouts", label: "Saved", icon: FolderOpen },
   { href: "/protected/workout-history", label: "History", icon: History },
+  { href: "/protected/plans/builder", label: "Plan Builder", icon: Calendar },
 ]
 
 interface Profile {

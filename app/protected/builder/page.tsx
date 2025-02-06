@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Save, Share, RotateCcw, Plus, GripHorizontal, Pencil, Trash2 } from "lucide-react"
 import { ExerciseSelectorModal } from "@/components/exercise-selector-modal"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { workoutTypes } from "@/app/config/workout-types"
@@ -14,6 +14,8 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { saveWorkout } from "@/app/actions/save-workout"
 import { useToast } from "@/components/ui/use-toast"
+import { createClient } from "@/utils/supabase/client"
+import { TemplateViewerModal } from "@/components/template-viewer-modal"
 
 interface Exercise {
   name: string
@@ -32,6 +34,20 @@ interface WorkoutItem {
   title?: string
 }
 
+interface SavedWorkout {
+  workout_id: number
+  workout_name: string
+  workout_type: string
+  exercises: {
+    exercise_name: string
+    sets: number
+    reps: number
+    muscle_group: string
+  }[]
+  created_at: string
+  count: number
+}
+
 export default function BuilderPage() {
   const { toast } = useToast()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -40,6 +56,10 @@ export default function BuilderPage() {
   const [workoutName, setWorkoutName] = useState("")
   const [isEditingName, setIsEditingName] = useState(true)
   const [editingExerciseIndex, setEditingExerciseIndex] = useState<number | null>(null)
+  const [templates, setTemplates] = useState<SavedWorkout[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(true)
+  const [selectedTemplate, setSelectedTemplate] = useState<SavedWorkout | null>(null)
+  const supabase = createClient()
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -172,6 +192,77 @@ export default function BuilderPage() {
       })
     }
   }
+
+  useEffect(() => {
+    async function fetchTemplates() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({
+            title: "Not authenticated",
+            description: "Please sign in to view templates",
+            variant: "destructive"
+          })
+          return
+        }
+
+        const { data: workoutsData, error: workoutsError } = await supabase
+          .from('saved_workouts')
+          .select(`
+            workout_id,
+            workout_name,
+            workout_type,
+            exercise_name,
+            sets,
+            reps,
+            muscle_group,
+            created_at
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (workoutsError) throw workoutsError
+
+        // Group workouts
+        const workoutMap = workoutsData.reduce((acc, exercise) => {
+          if (!acc.has(exercise.workout_id)) {
+            acc.set(exercise.workout_id, {
+              workout_id: exercise.workout_id,
+              workout_name: exercise.workout_name,
+              workout_type: exercise.workout_type,
+              created_at: exercise.created_at,
+              exercises: [],
+              count: 0
+            })
+          }
+          
+          const workout = acc.get(exercise.workout_id)!
+          workout.exercises.push({
+            exercise_name: exercise.exercise_name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            muscle_group: exercise.muscle_group
+          })
+          workout.count++
+          
+          return acc
+        }, new Map())
+
+        setTemplates(Array.from(workoutMap.values()))
+      } catch (error) {
+        console.error('Error fetching templates:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load templates",
+          variant: "destructive"
+        })
+      } finally {
+        setLoadingTemplates(false)
+      }
+    }
+
+    fetchTemplates()
+  }, [supabase, toast])
 
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
@@ -355,8 +446,47 @@ export default function BuilderPage() {
         <TabsContent value="templates">
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">Templates</h3>
-            {/* Templates content will go here */}
+            {loadingTemplates ? (
+              <div>Loading templates...</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {templates.map((template) => (
+                  <Card 
+                    key={template.workout_id}
+                    className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedTemplate(template)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h4 className="font-semibold">{template.workout_name}</h4>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">
+                            {workoutTypes.find(t => t.id === template.workout_type)?.label}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {template.count} exercises
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {Array.from(new Set(template.exercises.map(e => e.muscle_group))).map(group => (
+                        <Badge key={group} variant="secondary">
+                          {workoutTypes.find(t => t.id === group)?.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </Card>
+
+          <TemplateViewerModal
+            open={!!selectedTemplate}
+            onOpenChange={(open) => !open && setSelectedTemplate(null)}
+            template={selectedTemplate}
+          />
         </TabsContent>
 
         <TabsContent value="plans">
