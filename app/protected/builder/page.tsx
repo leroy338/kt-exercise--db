@@ -12,6 +12,8 @@ import { workoutTypes } from "@/app/config/workout-types"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { saveWorkout } from "@/app/actions/save-workout"
+import { useToast } from "@/components/ui/use-toast"
 
 interface Exercise {
   name: string
@@ -20,6 +22,8 @@ interface Exercise {
   rest: number
   muscleGroups: string[]
   type: string
+  section?: number
+  section_name?: string
 }
 
 interface WorkoutItem {
@@ -29,6 +33,7 @@ interface WorkoutItem {
 }
 
 export default function BuilderPage() {
+  const { toast } = useToast()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [workoutItems, setWorkoutItems] = useState<WorkoutItem[]>([])
   const [workoutType, setWorkoutType] = useState<string>("")
@@ -107,6 +112,67 @@ export default function BuilderPage() {
     setWorkoutItems(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleSave = async () => {
+    console.log('Save triggered')
+    
+    if (!workoutName) {
+      toast({
+        title: "Error",
+        description: "Please enter a workout name",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!workoutType) {
+      toast({
+        title: "Error",
+        description: "Please select a workout type",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const exercises = workoutItems.reduce((acc, item, index) => {
+      if (item.type === 'exercise' && item.data) {
+        const sectionIndex = workoutItems
+          .slice(0, index)
+          .filter(i => i.type === 'section')
+          .length + 1
+        
+        acc.push({
+          ...item.data,
+          section: sectionIndex,
+          section_name: workoutItems
+            .slice(0, index)
+            .filter(i => i.type === 'section')
+            .pop()?.title || `Section ${sectionIndex}`
+        })
+      }
+      return acc
+    }, [] as Exercise[])
+
+    const result = await saveWorkout(
+      exercises,
+      workoutName,
+      exercises.flatMap(e => e.muscleGroups),
+      workoutType
+    )
+
+    if (result.success) {
+      toast({
+        title: "Success",
+        description: "Workout saved successfully"
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to save workout",
+        variant: "destructive"
+      })
+    }
+  }
+
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
       <h2 className="text-2xl font-semibold">Builder</h2>
@@ -166,7 +232,7 @@ export default function BuilderPage() {
                   <Button size="icon" variant="outline" onClick={handleReset}>
                     <RotateCcw className="h-4 w-4" />
                   </Button>
-                  <Button size="icon" variant="outline">
+                  <Button size="icon" variant="outline" onClick={handleSave}>
                     <Save className="h-4 w-4" />
                   </Button>
                   <Button size="icon" variant="outline">

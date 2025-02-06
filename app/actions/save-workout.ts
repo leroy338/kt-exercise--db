@@ -8,12 +8,15 @@ interface Exercise {
   reps: number
   rest: number
   muscleGroups: string[]
+  section?: number
+  section_name?: string
 }
 
 export async function saveWorkout(
   exercises: Exercise[],
   workoutName: string,
-  muscleGroups: string[]
+  muscleGroups: string[],
+  workoutType: string
 ) {
   const supabase = await createClient()
   
@@ -39,11 +42,14 @@ export async function saveWorkout(
         exercises.map(exercise => ({
           workout_id: workoutId,
           workout_name: workoutName,
+          workout_type: workoutType,
           exercise_name: exercise.name,
           sets: exercise.sets,
           reps: exercise.reps,
           rest: exercise.rest,
           muscle_group: exercise.muscleGroups[0] || muscleGroups[0],
+          section: exercise.section,
+          section_name: exercise.section_name,
           user_id: user.id,
           created_at: new Date().toISOString()
         }))
