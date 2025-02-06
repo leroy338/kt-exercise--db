@@ -22,11 +22,21 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 
+interface Exercise {
+  name: string
+  sets: number
+  reps: number
+  rest: number
+  muscleGroups: string[]
+  type: string
+}
+
 interface ExerciseSelectorModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onExerciseSelect: (exercise: typeof exercises[0] & { sets: number, reps: number, rest: number }) => void
+  onExerciseSelect: (exercise: Exercise) => void
   workoutType?: string
+  editingExercise?: Exercise | null
 }
 
 export function ExerciseSelectorModal({
