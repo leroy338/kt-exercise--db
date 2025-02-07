@@ -3,7 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Save, Share, RotateCcw, Plus, GripHorizontal, Pencil, Trash2, Folder, ChevronRight, ChevronDown, FolderPlus } from "lucide-react"
+import { Save, Share, RotateCcw, Plus, GripHorizontal, Pencil, Trash2, Folder, ChevronRight, ChevronDown, FolderPlus, Share2 } from "lucide-react"
 import { ExerciseSelectorModal } from "@/components/exercise-selector-modal"
 import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -104,6 +104,9 @@ export default function BuilderPage() {
   const [view, setView] = useState<'folders' | 'all'>('folders')
   const [allTemplates, setAllTemplates] = useState<Template[]>([])
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [sharingTemplate, setSharingTemplate] = useState<SavedWorkout | null>(null)
+  const [isTemplateViewerOpen, setIsTemplateViewerOpen] = useState(false)
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -612,9 +615,54 @@ export default function BuilderPage() {
     }
   }
 
-  const handleTemplateClick = (template: Template) => {
-    setSelectedTemplate(template)
-    setIsTemplateModalOpen(true)
+  const handleTemplateSelect = async (template: Template) => {
+    try {
+      const { data: exercises } = await supabase
+        .from('saved_workouts')
+        .select('*')
+        .eq('workout_id', template.workout_id)
+
+      if (!exercises) return
+
+      // Convert exercises to WorkoutItems
+      const items: WorkoutItem[] = []
+      let currentSection = 1
+      
+      exercises.forEach((exercise) => {
+        if (items.length === 0 || exercise.section !== currentSection) {
+          items.push({
+            type: 'section',
+            data: null,
+            title: exercise.section_name || `Section ${exercise.section}`
+          })
+          currentSection = exercise.section
+        }
+        
+        items.push({
+          type: 'exercise',
+          data: {
+            name: exercise.exercise_name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            rest: exercise.rest || 0,
+            muscleGroups: [exercise.muscle_group],
+            type: exercise.workout_type
+          }
+        })
+      })
+
+      setWorkoutItems(items)
+      setWorkoutType(template.workout_type)
+      setWorkoutName(template.workout_name)
+      setIsTemplateModalOpen(false)
+    } catch (error) {
+      console.error('Error loading template:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load template",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleTemplateAction = async (action: 'plan' | 'schedule') => {
@@ -637,11 +685,95 @@ export default function BuilderPage() {
     setIsTemplateModalOpen(false)
   }
 
+  const handleShare = async (template: Template) => {
+    setIsSharing(true)
+    setSharingTemplate(template)
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Get complete workout data with sections
+      const { data: workoutData, error: workoutError } = await supabase
+        .from('saved_workouts')
+        .select(`
+          workout_id,
+          workout_name,
+          workout_type,
+          exercise_name,
+          sets,
+          reps,
+          muscle_group,
+          section,
+          section_name,
+          rest
+        `)
+        .eq('workout_id', template.workout_id)
+        .order('section', { ascending: true })
+
+      if (workoutError) throw workoutError
+
+      // Format workout data with sections
+      const sections = workoutData.reduce((acc: any, exercise) => {
+        const section = exercise.section || 1
+        if (!acc[section]) {
+          acc[section] = {
+            name: exercise.section_name || `Section ${section}`,
+            exercises: []
+          }
+        }
+        acc[section].exercises.push({
+          name: exercise.exercise_name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          muscle_group: exercise.muscle_group,
+          rest: exercise.rest
+        })
+        return acc
+      }, {})
+
+      // Create thread with shared template
+      const { error: threadError } = await supabase
+        .from('threads')
+        .insert({
+          body: `Shared a workout template: ${template.workout_name}`,
+          user_id: user.id,
+          thread_type: 'primary',
+          shared_template: {
+            workout_name: template.workout_name,
+            workout_type: template.workout_type,
+            sections: Object.values(sections)
+          }
+        })
+
+      if (threadError) throw threadError
+
+      toast({
+        title: "Success",
+        description: "Workout shared successfully"
+      })
+    } catch (error) {
+      console.error('Error sharing template:', error)
+      toast({
+        title: "Error",
+        description: "Failed to share template",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSharing(false)
+      setSharingTemplate(null)
+      setIsTemplateViewerOpen(false)
+    }
+  }
+
   const TemplateCard = ({ template }: { template: Template }) => (
     <Card 
       key={template.workout_id}
       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-      onClick={() => handleTemplateClick(template)}
+      onClick={() => {
+        setSelectedTemplate(template);
+        setIsTemplateViewerOpen(true);
+      }}
     >
       <h4 className="font-medium">{template.workout_name}</h4>
       <div className="flex items-center gap-2 mt-2">
@@ -651,6 +783,17 @@ export default function BuilderPage() {
         <span className="text-sm text-muted-foreground">
           {template.count} exercises
         </span>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="ml-auto"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleShare(template)
+          }}
+        >
+          <Share2 className="h-4 w-4" />
+        </Button>
       </div>
     </Card>
   )
@@ -917,43 +1060,17 @@ export default function BuilderPage() {
             </div>
           </Card>
 
-          <TemplateViewerModal
-            open={!!selectedTemplate}
-            onOpenChange={(open) => !open && setSelectedTemplate(null)}
-            template={selectedTemplate}
+          <TemplateSelectorModal
+            open={isTemplateModalOpen}
+            onOpenChange={setIsTemplateModalOpen}
+            templates={templates}
+            folders={folders}
+            recentTemplates={recentTemplates}
+            onSelect={handleTemplateSelect}
+            onShare={handleShare}
+            sharingTemplate={sharingTemplate}
+            isSharing={isSharing}
           />
-
-          <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>{selectedTemplate?.workout_name}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {selectedTemplate?.exercises.map((exercise, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <span>{exercise.exercise_name}</span>
-                    <span className="text-muted-foreground">
-                      {exercise.sets} × {exercise.reps}
-                    </span>
-                  </div>
-                ))}
-                <Separator className="my-4" />
-                <div className="flex justify-end space-x-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleTemplateAction('plan')}
-                  >
-                    Add to Plan
-                  </Button>
-                  <Button
-                    onClick={() => handleTemplateAction('schedule')}
-                  >
-                    Schedule Workout
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
         <TabsContent value="plans">
@@ -962,6 +1079,15 @@ export default function BuilderPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <TemplateViewerModal
+        open={isTemplateViewerOpen}
+        onOpenChange={setIsTemplateViewerOpen}
+        template={selectedTemplate}
+        onShare={handleShare}
+        isSharing={isSharing}
+        buttonText="Load Template"
+      />
     </div>
   )
 }

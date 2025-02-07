@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { workoutTypes } from "@/app/config/workout-types"
 import { muscleGroups } from "@/app/config/muscle-groups"
-import { Folder, ChevronRight, ChevronDown } from "lucide-react"
+import { Folder, ChevronRight, ChevronDown, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -53,6 +53,9 @@ interface TemplateSelectorModalProps {
   folders: {name: string, templates: Template[]}[]
   recentTemplates: Template[]
   onSelect: (template: Template) => void
+  onShare: (template: Template) => void
+  sharingTemplate: Template | null
+  isSharing: boolean
   actionText?: string
 }
 
@@ -63,6 +66,9 @@ export function TemplateSelectorModal({
   folders,
   recentTemplates,
   onSelect,
+  onShare,
+  sharingTemplate,
+  isSharing,
   actionText = "Add to Plan"
 }: TemplateSelectorModalProps) {
   const [openFolders, setOpenFolders] = useState<string[]>([])

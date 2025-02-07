@@ -51,6 +51,8 @@ export default function Planner() {
   const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null)
   const [isViewerOpen, setIsViewerOpen] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [sharingTemplate, setSharingTemplate] = useState<Template | null>(null)
   const supabase = createClient()
   const { toast } = useToast()
   const router = useRouter()
@@ -332,6 +334,10 @@ export default function Planner() {
     return today.toDateString() === compareDate.toDateString()
   }
 
+  const handleShare = async (template: Template) => {
+    // Copy the same share logic from BuilderPage
+  }
+
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
       <div className="flex justify-between items-center">
@@ -498,6 +504,9 @@ export default function Planner() {
         folders={folders}
         recentTemplates={recentTemplates}
         onSelect={handleTemplateSelect}
+        onShare={handleShare}
+        sharingTemplate={sharingTemplate}
+        isSharing={isSharing}
         actionText={date && new Date(date).toDateString() === new Date().toDateString() 
           ? "Add Today" 
           : "Schedule"}

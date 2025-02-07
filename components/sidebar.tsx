@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList } from 'lucide-react'
+import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from "@/utils/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -115,6 +115,40 @@ function NavContent({ profile, onNavigate }: {
           </li>
         </ul>
       </nav>
+      
+      {/* Add profile section at bottom */}
+      <div className="border-t pt-4">
+        <Link
+          href="/protected/profile"
+          onClick={onNavigate}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground",
+            pathname === "/protected/profile" ? "bg-accent text-foreground" : ""
+          )}
+        >
+          <div className="flex items-center gap-3 flex-1">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={profile?.avatar_url || '/avatars/default.png'} />
+              <AvatarFallback>
+                {profile?.first_name?.[0]}
+                {profile?.last_name?.[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <span className="text-sm">
+                {profile?.first_name 
+                  ? `${profile.first_name} ${profile.last_name || ''}`
+                  : 'Profile'}
+              </span>
+              {profile?.email && (
+                <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                  {profile.email}
+                </span>
+              )}
+            </div>
+          </div>
+        </Link>
+      </div>
     </div>
   )
 }

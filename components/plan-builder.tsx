@@ -44,6 +44,8 @@ export function PlanBuilder() {
   const supabase = createClient()
   const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
   const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
+  const [isSharing, setIsSharing] = useState(false)
+  const [sharingTemplate, setSharingTemplate] = useState<Template | null>(null)
 
   useEffect(() => {
     async function fetchTemplates() {
@@ -194,6 +196,10 @@ export function PlanBuilder() {
     )
   }
 
+  const handleShare = async (template: Template) => {
+    // Copy the same share logic from BuilderPage
+  }
+
   return (
     <>
       <Card className="p-6">
@@ -294,6 +300,9 @@ export function PlanBuilder() {
         folders={folders}
         recentTemplates={recentTemplates}
         onSelect={handleTemplateSelect}
+        onShare={handleShare}
+        sharingTemplate={sharingTemplate}
+        isSharing={isSharing}
       />
 
     </>

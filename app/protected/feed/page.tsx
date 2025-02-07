@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Heart, MessageCircle, Share2, Send } from "lucide-react"
+import { Heart, MessageCircle, Share2, Send, ChevronDown, ChevronUp } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/utils/supabase/client"
@@ -19,7 +19,7 @@ interface Thread {
   isLiked?: boolean
   author: {
     name: string
-    username: string
+    handle: string
     avatar: string
   }
 }
@@ -28,6 +28,8 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<Thread[]>([])
   const [newPost, setNewPost] = useState("")
   const [loading, setLoading] = useState(true)
+  const [replyingTo, setReplyingTo] = useState<Thread | null>(null)
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set())
   const supabase = createClient()
 
   useEffect(() => {
@@ -81,7 +83,7 @@ export default function FeedPage() {
         isLiked: thread.thread_likes?.length > 0,
         author: {
           name: `${thread.author_first_name || ''} ${thread.author_last_name || ''}`.trim() || 'Anonymous',
-          username: thread.author_handle || 'user',
+          handle: thread.author_handle || 'user',
           avatar: thread.author_avatar_url || '/avatars/default.png'
         }
       })))
@@ -99,46 +101,37 @@ export default function FeedPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      console.log('Current user:', user)  // Debug log
-
-      // First get the user's profile data
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*')  // Let's see all available fields first
+        .select('first_name, last_name, handle, avatar_url')
         .eq('user_id', user.id)
         .single()
 
       if (profileError) {
-        console.error('Error fetching profile:', {
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint,
-          code: profileError.code
-        })
+        console.error('Error fetching profile:', profileError)
         return
       }
 
-      console.log('Full profile data:', profile)  // Debug log
+      const threadData = {
+        thread_type: replyingTo ? 'secondary' : 'primary' as 'primary' | 'secondary',
+        body: newPost,
+        user_id: user.id,
+        thread_id: replyingTo?.id || null,
+        author_first_name: profile?.first_name || '',
+        author_last_name: profile?.last_name || '',
+        author_handle: profile?.handle || 'user',
+        author_avatar_url: profile?.avatar_url || '/avatars/default.png'
+      }
 
       const { error } = await supabase
         .from('threads')
-        .insert({
-          thread_type: 'primary',
-          body: newPost,
-          user_id: user.id,
-          author_first_name: profile?.first_name || '',
-          author_last_name: profile?.last_name || '',
-          author_handle: profile?.username || 'user',
-          author_avatar_url: profile?.avatar_url || '/avatars/default.png'
-        })
+        .insert(threadData)
 
-      if (error) {
-        console.error('Error inserting thread:', error)  // Debug log
-        throw error
-      }
+      if (error) throw error
 
       fetchThreads()
       setNewPost("")
+      setReplyingTo(null)
     } catch (error) {
       console.error('Full error:', error)
     }
@@ -211,6 +204,63 @@ export default function FeedPage() {
     }
   }
 
+  const toggleThread = async (threadId: string) => {
+    const newExpandedThreads = new Set(expandedThreads)
+    if (expandedThreads.has(threadId)) {
+      newExpandedThreads.delete(threadId)
+    } else {
+      newExpandedThreads.add(threadId)
+      // Fetch replies when expanding
+      try {
+        const { data: replies, error } = await supabase
+          .from('threads')
+          .select(`
+            id,
+            thread_id,
+            thread_type,
+            user_id,
+            body,
+            likes,
+            created_at,
+            author_first_name,
+            author_last_name,
+            author_handle,
+            author_avatar_url,
+            thread_likes(user_id)
+          `)
+          .eq('thread_id', threadId)
+          .eq('thread_type', 'secondary')
+          .order('created_at', { ascending: true })
+
+        if (error) throw error
+
+        // Add replies to posts
+        setPosts(currentPosts => {
+          const newPosts = [...currentPosts]
+          const repliesFormatted = replies.map(reply => ({
+            id: reply.id,
+            thread_id: reply.thread_id,
+            thread_type: reply.thread_type,
+            user_id: reply.user_id,
+            body: reply.body,
+            likes: reply.likes,
+            created_at: reply.created_at,
+            isLiked: reply.thread_likes?.length > 0,
+            author: {
+              name: `${reply.author_first_name || ''} ${reply.author_last_name || ''}`.trim() || 'Anonymous',
+              handle: reply.author_handle || 'user',
+              avatar: reply.author_avatar_url || '/avatars/default.png'
+            }
+          }))
+          return [...newPosts, ...repliesFormatted]
+        })
+      } catch (error) {
+        console.error('Error fetching replies:', error)
+      }
+    }
+    setExpandedThreads(newExpandedThreads)
+  }
+
   if (loading) {
     return <div className="container mx-auto px-4 md:px-6 py-8">Loading...</div>
   }
@@ -218,7 +268,9 @@ export default function FeedPage() {
   return (
     <div className="container mx-auto px-4 md:px-6 py-8">
       <div className="space-y-4">
-        {posts.map(post => (
+        {posts
+          .filter(post => post.thread_type === 'primary')
+          .map(post => (
           <Card key={post.id} className="p-4">
             <div className="flex gap-4">
               <Avatar>
@@ -228,7 +280,7 @@ export default function FeedPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{post.author.name}</span>
-                  <span className="text-muted-foreground">@{post.author.username}</span>
+                  <span className="text-muted-foreground">@{post.author.handle}</span>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-muted-foreground">
                     {new Date(post.created_at).toLocaleDateString()}
@@ -245,41 +297,107 @@ export default function FeedPage() {
                     <Heart className={`h-4 w-4 mr-2 ${post.isLiked ? "fill-current" : ""}`} />
                     {post.likes}
                   </Button>
-                  <Button variant="ghost" size="sm">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      toggleThread(post.id)
+                      if (!expandedThreads.has(post.id)) {
+                        setReplyingTo(post)
+                      }
+                    }}
+                  >
+                    {expandedThreads.has(post.id) ? (
+                      <ChevronUp className="h-4 w-4 mr-2" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 mr-2" />
+                    )}
                     <MessageCircle className="h-4 w-4 mr-2" />
-                    0
+                    Reply
                   </Button>
                   <Button variant="ghost" size="sm">
                     <Share2 className="h-4 w-4 mr-2" />
                     Share
                   </Button>
                 </div>
+
+                {/* Replies Section */}
+                {expandedThreads.has(post.id) && (
+                  <div className="mt-4 pl-8 space-y-4 border-l-2">
+                    {posts
+                      .filter(reply => reply.thread_id === post.id)
+                      .map(reply => (
+                        <div key={reply.id} className="flex gap-4">
+                          <Avatar>
+                            <AvatarImage src={reply.author.avatar} />
+                            <AvatarFallback>{reply.author.name[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{reply.author.name}</span>
+                              <span className="text-muted-foreground">@{reply.author.handle}</span>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-muted-foreground">
+                                {new Date(reply.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="mt-2">{reply.body}</p>
+                            <div className="flex gap-6 mt-4">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleLike(reply.id)}
+                                className={reply.isLiked ? "text-red-500" : ""}
+                              >
+                                <Heart className={`h-4 w-4 mr-2 ${reply.isLiked ? "fill-current" : ""}`} />
+                                {reply.likes}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </Card>
         ))}
       </div>
 
-      {/* New post input - adjusted for sidebar */}
+      {/* New post input */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t lg:pl-64">
-        <div className="container mx-auto max-w-3xl flex gap-2">
-          <Input
-            placeholder="What's on your mind?"
-            value={newPost}
-            onChange={(e) => setNewPost(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmitPost()}
-            className="flex-1"
-          />
-          <Button 
-            onClick={handleSubmitPost}
-            disabled={!newPost.trim()}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="container mx-auto max-w-3xl">
+          {replyingTo && (
+            <div className="mb-2 text-sm text-muted-foreground">
+              Replying to @{replyingTo.author.handle}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="ml-2 h-6"
+                onClick={() => setReplyingTo(null)}
+              >
+                ×
+              </Button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              placeholder={replyingTo ? "Write your reply..." : "What's on your mind?"}
+              value={newPost}
+              onChange={(e) => setNewPost(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmitPost()}
+              className="flex-1"
+            />
+            <Button 
+              onClick={handleSubmitPost}
+              disabled={!newPost.trim()}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
       
-      {/* Adjusted padding for sidebar and mobile */}
       <div className="h-20" />
     </div>
   )

@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar, ListPlus } from "lucide-react"
+import { Calendar, ListPlus, Share2 } from "lucide-react"
 import { workoutTypes } from "@/app/config/workout-types"
 import { muscleGroups } from "@/app/config/muscle-groups"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -26,8 +26,10 @@ interface Template {
   workout_id: number
   workout_name: string
   workout_type: string
+  created_at: string
   exercises: Exercise[]
   count: number
+  folder?: string
 }
 
 interface TemplateViewerModalProps {
@@ -35,6 +37,8 @@ interface TemplateViewerModalProps {
   onOpenChange: (open: boolean) => void
   template: Template | null
   onAction?: (action: 'schedule' | 'plan') => void
+  onShare?: (template: Template) => void
+  isSharing?: boolean
   planMode?: boolean
   buttonText?: string
 }
@@ -44,6 +48,8 @@ export function TemplateViewerModal({
   onOpenChange,
   template,
   onAction,
+  onShare,
+  isSharing = false,
   planMode = false,
   buttonText = "Schedule"
 }: TemplateViewerModalProps) {
@@ -113,6 +119,16 @@ export function TemplateViewerModal({
             <Calendar className="h-4 w-4 mr-2" />
             {buttonText}
           </Button>
+          {onShare && (
+            <Button
+              variant="outline"
+              onClick={() => onShare(template)}
+              disabled={isSharing}
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
