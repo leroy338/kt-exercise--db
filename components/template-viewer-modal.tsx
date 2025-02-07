@@ -36,12 +36,16 @@ interface TemplateViewerModalProps {
   template: Template | null
   onAction?: (action: 'schedule' | 'plan') => void
   planMode?: boolean
+  buttonText?: string
 }
 
 export function TemplateViewerModal({
   open,
   onOpenChange,
-  template
+  template,
+  onAction,
+  planMode = false,
+  buttonText = "Schedule"
 }: TemplateViewerModalProps) {
   const router = useRouter()
   if (!template) return null
@@ -54,6 +58,16 @@ export function TemplateViewerModal({
   const handleAddToPlan = () => {
     router.push(`/protected/plans/add/${template.workout_id}`)
     onOpenChange(false)
+  }
+
+  const handleAction = (action: 'schedule' | 'plan') => {
+    if (onAction) {
+      onAction(action)
+    } else if (action === 'schedule') {
+      handleSchedule()
+    } else if (action === 'plan') {
+      handleAddToPlan()
+    }
   }
 
   return (
@@ -93,19 +107,11 @@ export function TemplateViewerModal({
 
         <DialogFooter className="sm:justify-start gap-2">
           <Button 
-            onClick={handleSchedule}
+            onClick={() => handleAction('schedule')}
             className="flex-1"
           >
             <Calendar className="h-4 w-4 mr-2" />
-            Schedule
-          </Button>
-          <Button 
-            onClick={handleAddToPlan}
-            variant="outline"
-            className="flex-1"
-          >
-            <ListPlus className="h-4 w-4 mr-2" />
-            Add to Plan
+            {buttonText}
           </Button>
         </DialogFooter>
       </DialogContent>

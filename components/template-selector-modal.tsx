@@ -53,6 +53,7 @@ interface TemplateSelectorModalProps {
   folders: {name: string, templates: Template[]}[]
   recentTemplates: Template[]
   onSelect: (template: Template) => void
+  actionText?: string
 }
 
 export function TemplateSelectorModal({
@@ -61,7 +62,8 @@ export function TemplateSelectorModal({
   templates,
   folders,
   recentTemplates,
-  onSelect
+  onSelect,
+  actionText = "Add to Plan"
 }: TemplateSelectorModalProps) {
   const [openFolders, setOpenFolders] = useState<string[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -208,7 +210,7 @@ export function TemplateSelectorModal({
               Cancel
             </Button>
             <Button onClick={handleAddToPlan}>
-              Add to Plan
+              {actionText}
             </Button>
           </div>
         </DialogContent>

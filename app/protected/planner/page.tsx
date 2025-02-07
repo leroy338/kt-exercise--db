@@ -12,12 +12,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, PlayCircle } from "lucide-react"
 import { createClient } from "@/utils/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { workoutTypes } from "@/app/config/workout-types"
 import { TemplateSelectorModal, Template } from "@/components/template-selector-modal"
+import { TemplateViewerModal } from "@/components/template-viewer-modal"
+import { useRouter } from "next/navigation"
 
 interface WorkoutEvent {
   workout_id: number
@@ -47,8 +49,11 @@ export default function Planner() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
   const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
+  const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null)
+  const [isViewerOpen, setIsViewerOpen] = useState(false)
   const supabase = createClient()
   const { toast } = useToast()
+  const router = useRouter()
 
   useEffect(() => {
     fetchScheduledWorkouts()
@@ -107,37 +112,61 @@ export default function Planner() {
           folder
         `)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      // Group exercises by workout_id
-      const templateMap = new Map<number, Template>()
-      data.forEach(row => {
-        if (!templateMap.has(row.workout_id)) {
-          templateMap.set(row.workout_id, {
-            workout_id: row.workout_id,
-            workout_name: row.workout_name,
-            workout_type: row.workout_type,
-            created_at: row.created_at,
-            folder: row.folder,
+      // Group workouts
+      const workoutMap = new Map<number, Template>()
+      data.forEach(exercise => {
+        if (!workoutMap.has(exercise.workout_id)) {
+          workoutMap.set(exercise.workout_id, {
+            workout_id: exercise.workout_id,
+            workout_name: exercise.workout_name,
+            workout_type: exercise.workout_type,
+            created_at: exercise.created_at,
+            folder: exercise.folder,
             exercises: [],
             count: 0
           })
         }
-        const template = templateMap.get(row.workout_id)
-        if (template) {
-          template.exercises.push({
-            exercise_name: row.exercise_name,
-            sets: row.sets,
-            reps: row.reps,
-            muscle_group: row.muscle_group
-          })
-          template.count = template.exercises.length
+        
+        const workout = workoutMap.get(exercise.workout_id)!
+        workout.exercises.push({
+          exercise_name: exercise.exercise_name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          muscle_group: exercise.muscle_group
+        })
+        workout.count++
+      })
+
+      const templates = Array.from(workoutMap.values())
+      
+      // Group by folders
+      const folderMap = new Map<string, Template[]>()
+      templates.forEach(template => {
+        if (template.folder) {
+          if (!folderMap.has(template.folder)) {
+            folderMap.set(template.folder, [])
+          }
+          folderMap.get(template.folder)!.push(template)
         }
       })
 
-      setTemplates(Array.from(templateMap.values()))
+      setFolders(Array.from(folderMap.entries()).map(([name, templates]) => ({
+        name,
+        templates
+      })))
+
+      // Set recent templates
+      setRecentTemplates(
+        templates
+          .filter(t => !t.folder)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 3)
+      )
+
+      setTemplates(templates)
     } catch (error) {
       console.error('Error fetching templates:', error)
       toast({
@@ -234,9 +263,73 @@ export default function Planner() {
     }
   }
 
-  const handleTemplateSelect = (template: Template) => {
-    console.log('Selected template:', template)
-    // TODO: Add logic to schedule the workout
+  const handleTemplateSelect = async (template: Template) => {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError) throw authError
+      if (!user || !date) return
+
+      const today = new Date()
+      const selectedDate = new Date(date)
+      
+      // Set to start of day for comparison
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const selectedStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
+      
+      const isToday = todayStart.getTime() === selectedStart.getTime()
+      
+      // Create proper timestamps
+      const scheduledFor = isToday 
+        ? today.toISOString() // Current time for today
+        : new Date(selectedDate.setHours(9, 0, 0, 0)).toISOString() // 9 AM for future dates
+
+      const { error: insertError } = await supabase
+        .from('scheduled_workouts')
+        .insert({
+          user_id: user.id,
+          workout_id: template.workout_id,
+          scheduled_for: scheduledFor,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+      if (insertError) throw insertError
+
+      toast({
+        title: "Success",
+        description: isToday 
+          ? "Workout added for today" 
+          : "Workout scheduled successfully"
+      })
+      
+      fetchScheduledWorkouts()
+      setIsTemplateModalOpen(false)
+    } catch (error) {
+      console.error('Error scheduling workout:', {
+        message: (error as Error).message,
+        details: (error as { details?: string }).details
+      })
+      toast({
+        title: "Error",
+        description: "Failed to schedule workout",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleTemplateAction = async (action: 'schedule' | 'plan') => {
+    if (!viewingTemplate) return
+    await handleTemplateSelect(viewingTemplate)
+  }
+
+  const handleStartWorkout = (workoutId: number) => {
+    router.push(`/protected/workout/start/${workoutId}`)
+  }
+
+  const isToday = (dateStr: string) => {
+    const today = new Date()
+    const compareDate = new Date(dateStr)
+    return today.toDateString() === compareDate.toDateString()
   }
 
   return (
@@ -367,12 +460,28 @@ export default function Planner() {
                       </div>
                     ))}
                   </div>
+                  {isToday(workout.created_at) && (
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={() => handleStartWorkout(workout.workout_id)}
+                      >
+                        <PlayCircle className="h-4 w-4 mr-2" />
+                        Start Workout
+                      </Button>
+                    </div>
+                  )}
                 </Card>
               ))
             ) : (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">No workouts scheduled for this day</p>
-                <Button className="mt-4" variant="outline" size="sm">
+                <Button 
+                  className="mt-4" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setIsTemplateModalOpen(true)}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Workout
                 </Button>
@@ -389,6 +498,20 @@ export default function Planner() {
         folders={folders}
         recentTemplates={recentTemplates}
         onSelect={handleTemplateSelect}
+        actionText={date && new Date(date).toDateString() === new Date().toDateString() 
+          ? "Add Today" 
+          : "Schedule"}
+      />
+
+      <TemplateViewerModal
+        open={isViewerOpen}
+        onOpenChange={setIsViewerOpen}
+        template={viewingTemplate}
+        onAction={handleTemplateAction}
+        planMode={true}
+        buttonText={date && new Date(date).toDateString() === new Date().toDateString() 
+          ? "Add Today" 
+          : "Schedule"}
       />
     </div>
   )

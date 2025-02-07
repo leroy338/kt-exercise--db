@@ -1,4 +1,5 @@
 import { WorkoutStatsChart } from "@/app/protected/components/workout-stats-chart"
+import { TodaysWorkouts } from "@/app/protected/components/todays-workouts"
 
 export default function ProtectedHome() {
   return (
@@ -8,6 +9,9 @@ export default function ProtectedHome() {
         <p className="text-muted-foreground">
           Track your workouts and monitor your progress
         </p>
+      </div>
+      <div className="mt-8">
+        <TodaysWorkouts />
       </div>
       <div className="mt-8">
         <WorkoutStatsChart />
