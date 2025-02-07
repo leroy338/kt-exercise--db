@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight } from 'lucide-react'
+import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from "@/utils/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -26,6 +26,7 @@ import {
 const mainNavItems = [
   { href: "/protected", label: "Home", icon: Home },
   { href: "/protected/planner", label: "Planner", icon: Calendar },
+  { href: "/protected/feed", label: "Feed", icon: LayoutList },
 ]
 
 const workoutNavItems = [
