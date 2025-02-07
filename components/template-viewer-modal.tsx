@@ -34,6 +34,8 @@ interface TemplateViewerModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   template: Template | null
+  onAction?: (action: 'schedule' | 'plan') => void
+  planMode?: boolean
 }
 
 export function TemplateViewerModal({

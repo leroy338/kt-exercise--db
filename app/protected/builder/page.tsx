@@ -33,6 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { TemplateSelectorModal, Template } from "@/components/template-selector-modal"
+import { PlanBuilder } from "@/components/plan-builder"
 
 interface Exercise {
   name: string
@@ -74,6 +76,8 @@ interface TemplateFolder {
 }
 
 export default function BuilderPage() {
+  const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
+  const supabase = createClient()
   const { toast } = useToast()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [workoutItems, setWorkoutItems] = useState<WorkoutItem[]>([])
@@ -84,18 +88,22 @@ export default function BuilderPage() {
   const [templates, setTemplates] = useState<SavedWorkout[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(true)
   const [selectedTemplate, setSelectedTemplate] = useState<SavedWorkout | null>(null)
-  const [folders, setFolders] = useState<TemplateFolder[]>([
+  const [foldersState, setFoldersState] = useState<TemplateFolder[]>([
     { name: 'Recent', workouts: [], isOpen: true },
     { name: 'All Templates', workouts: [], isOpen: false },
     { name: 'Favorites', workouts: [], isOpen: false },
   ])
-  const supabase = createClient()
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState("")
   const [isShareable, setIsShareable] = useState(false)
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
   const [newQuickFolderName, setNewQuickFolderName] = useState("")
   const [selectedFolder, setSelectedFolder] = useState<string>("")
+  const [openFolders, setOpenFolders] = useState<string[]>([])
+  const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
+  const [view, setView] = useState<'folders' | 'all'>('folders')
+  const [allTemplates, setAllTemplates] = useState<Template[]>([])
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -232,8 +240,153 @@ export default function BuilderPage() {
 
   useEffect(() => {
     fetchFolders()
-    fetchTemplates()
-  }, [supabase, toast])
+    fetchRecentTemplates()
+    fetchAllTemplates()
+  }, [])
+
+  async function fetchFolders() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // First get folders
+      const { data: folderData, error: folderError } = await supabase
+        .from('saved_workouts')
+        .select('folder')
+        .not('folder', 'is', null)
+        .order('folder')
+
+      if (folderError) throw folderError
+
+      // Get unique folders
+      const uniqueFolders = Array.from(new Set(folderData.map(row => row.folder)))
+        .map(folderName => ({ name: folderName, templates: [] }))
+
+      // Then get all workouts for these folders
+      const { data: workouts, error: workoutsError } = await supabase
+        .from('saved_workouts')
+        .select(`
+          workout_id,
+          workout_name,
+          workout_type,
+          exercise_name,
+          sets,
+          reps,
+          muscle_group,
+          created_at,
+          folder
+        `)
+        .in('folder', uniqueFolders.map(f => f.name))
+
+      if (workoutsError) throw workoutsError
+
+      // Group workouts by folder
+      const folderMap = new Map<string, Template[]>(uniqueFolders.map(f => [f.name, []]))
+      
+      // First group by workout_id
+      const workoutMap = new Map()
+      workouts.forEach(row => {
+        if (!workoutMap.has(row.workout_id)) {
+          workoutMap.set(row.workout_id, {
+            workout_id: row.workout_id,
+            workout_name: row.workout_name,
+            workout_type: row.workout_type,
+            created_at: row.created_at,
+            exercises: [],
+            count: 0
+          })
+        }
+        const workout = workoutMap.get(row.workout_id)
+        workout.exercises.push({
+          exercise_name: row.exercise_name,
+          sets: row.sets,
+          reps: row.reps,
+          muscle_group: row.muscle_group
+        })
+        workout.count = workout.exercises.length
+      })
+
+      // Then organize into folders
+      workouts.forEach(row => {
+        const workout = workoutMap.get(row.workout_id)
+        const folderTemplates = folderMap.get(row.folder)
+        if (workout && folderTemplates && !folderTemplates.some((w: { workout_id: number }) => w.workout_id === workout.workout_id)) {
+          folderTemplates.push(workout)
+        }
+      })
+
+      // Update state with organized folders
+      setFolders(Array.from(folderMap.entries()).map(([name, templates]) => ({
+        name,
+        templates
+      })))
+
+    } catch (error) {
+      console.error('Error fetching folders:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load folders",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleFolderSelect = async (folderName: string) => {
+    setSelectedFolder(folderName)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('saved_workouts')
+        .select(`
+          workout_id,
+          workout_name,
+          workout_type,
+          exercise_name,
+          sets,
+          reps,
+          muscle_group,
+          created_at
+        `)
+        .eq('user_id', user.id)
+        .eq('folder', folderName)
+
+      if (error) throw error
+
+      // Group by workout_id
+      const templateMap = new Map<number, Template>()
+      data.forEach(row => {
+        if (!templateMap.has(row.workout_id)) {
+          templateMap.set(row.workout_id, {
+            workout_id: row.workout_id,
+            workout_name: row.workout_name,
+            workout_type: row.workout_type,
+            created_at: row.created_at,
+            exercises: [],
+            count: 0
+          })
+        }
+        const template = templateMap.get(row.workout_id)!
+        template.exercises.push({
+          exercise_name: row.exercise_name,
+          sets: row.sets,
+          reps: row.reps,
+          muscle_group: row.muscle_group
+        })
+        template.count = template.exercises.length
+      })
+
+      setTemplates(Array.from(templateMap.values()))
+    } catch (error) {
+      console.error('Error fetching templates:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load templates",
+        variant: "destructive"
+      })
+    }
+  }
 
   async function fetchTemplates() {
     try {
@@ -319,11 +472,13 @@ export default function BuilderPage() {
 
       if (error) throw error
       
-      setFolders([...folders, {
-        name: newFolderName,
-        workouts: templates.filter(t => selectedTemplates.includes(t.workout_id.toString())),
-        isOpen: true
-      }])
+      setFoldersState(prev => prev.map((folder) => ({
+        ...folder,
+        workouts: folder.name === 'All Templates' ? data.map((row: string) => ({
+          name: row,
+          isOpen: true
+        })) : undefined
+      })))
       
       // Reset form
       setNewFolderName("")
@@ -338,104 +493,167 @@ export default function BuilderPage() {
     }
   }
 
-  async function fetchFolders() {
+  const toggleFolder = (folderName: string) => {
+    setOpenFolders(prev => 
+      prev.includes(folderName) 
+        ? prev.filter(name => name !== folderName)
+        : [...prev, folderName]
+    )
+  }
+
+  async function fetchRecentTemplates() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast({
-          title: "Not authenticated",
-          description: "Please sign in to view folders",
-          variant: "destructive"
-        })
-        return
-      }
+      if (!user) return
 
-      // Get all workouts with folders
-      const { data: workoutsData, error: workoutsError } = await supabase
+      const { data, error } = await supabase
         .from('saved_workouts')
         .select(`
           workout_id,
           workout_name,
           workout_type,
-          folder,
           exercise_name,
           sets,
           reps,
           muscle_group,
           created_at
         `)
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (workoutsError) throw workoutsError
+      if (error) throw error
 
-      // Group workouts by folder
-      const folderMap = new Map<string, SavedWorkout[]>()
-      
-      // First, group exercises by workout_id
-      const workoutMap = workoutsData.reduce((acc, exercise) => {
-        if (!acc.has(exercise.workout_id)) {
-          acc.set(exercise.workout_id, {
-            workout_id: exercise.workout_id,
-            workout_name: exercise.workout_name,
-            workout_type: exercise.workout_type,
-            folder: exercise.folder,
-            created_at: exercise.created_at,
+      // Group by workout_id
+      const workoutMap = new Map<number, Template>()
+      data.forEach(row => {
+        if (!workoutMap.has(row.workout_id)) {
+          workoutMap.set(row.workout_id, {
+            workout_id: row.workout_id,
+            workout_name: row.workout_name,
+            workout_type: row.workout_type,
+            created_at: row.created_at,
             exercises: [],
             count: 0
           })
         }
-        
-        const workout = acc.get(exercise.workout_id)!
+        const workout = workoutMap.get(row.workout_id)!
         workout.exercises.push({
-          exercise_name: exercise.exercise_name,
-          sets: exercise.sets,
-          reps: exercise.reps,
-          muscle_group: exercise.muscle_group
+          exercise_name: row.exercise_name,
+          sets: row.sets,
+          reps: row.reps,
+          muscle_group: row.muscle_group
         })
-        workout.count++
-        
-        return acc
-      }, new Map())
-
-      const allWorkouts = Array.from(workoutMap.values())
-
-      // Then, group workouts by folder
-      allWorkouts.forEach(workout => {
-        if (workout.folder) {
-          if (!folderMap.has(workout.folder)) {
-            folderMap.set(workout.folder, [])
-          }
-          folderMap.get(workout.folder)!.push(workout)
-        }
+        workout.count = workout.exercises.length
       })
 
-      // Update folders state without the Recent folder
-      setFolders([
-        { 
-          name: 'All Templates', 
-          workouts: allWorkouts,
-          isOpen: false,
-          isSpecial: true 
-        },
-        { type: 'separator' },
-        ...Array.from(folderMap.entries()).map(([name, workouts]) => ({
-          name,
-          workouts,
-          isOpen: false,
-          isSpecial: false
-        }))
-      ])
-
+      // Get only the 3 most recent templates
+      setRecentTemplates(Array.from(workoutMap.values()).slice(0, 3))
     } catch (error) {
-      console.error('Error fetching folders:', error)
+      console.error('Error fetching recent templates:', error)
       toast({
         title: "Error",
-        description: "Failed to load folders",
+        description: "Failed to load recent templates",
         variant: "destructive"
       })
     }
   }
+
+  async function fetchAllTemplates() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('saved_workouts')
+        .select(`
+          workout_id,
+          workout_name,
+          workout_type,
+          exercise_name,
+          sets,
+          reps,
+          muscle_group,
+          created_at
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Group by workout_id
+      const workoutMap = new Map<number, Template>()
+      data.forEach(row => {
+        if (!workoutMap.has(row.workout_id)) {
+          workoutMap.set(row.workout_id, {
+            workout_id: row.workout_id,
+            workout_name: row.workout_name,
+            workout_type: row.workout_type,
+            created_at: row.created_at,
+            exercises: [],
+            count: 0
+          })
+        }
+        const workout = workoutMap.get(row.workout_id)!
+        workout.exercises.push({
+          exercise_name: row.exercise_name,
+          sets: row.sets,
+          reps: row.reps,
+          muscle_group: row.muscle_group
+        })
+        workout.count = workout.exercises.length
+      })
+
+      setAllTemplates(Array.from(workoutMap.values()))
+    } catch (error) {
+      console.error('Error fetching all templates:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load templates",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleTemplateClick = (template: Template) => {
+    setSelectedTemplate(template)
+    setIsTemplateModalOpen(true)
+  }
+
+  const handleTemplateAction = async (action: 'plan' | 'schedule') => {
+    if (!selectedTemplate) return
+
+    if (action === 'plan') {
+      // TODO: Add to plan logic
+      toast({
+        title: "Coming Soon",
+        description: "Adding to plan will be available soon",
+      })
+    } else {
+      // TODO: Schedule workout logic
+      toast({
+        title: "Coming Soon",
+        description: "Scheduling workouts will be available soon",
+      })
+    }
+
+    setIsTemplateModalOpen(false)
+  }
+
+  const TemplateCard = ({ template }: { template: Template }) => (
+    <Card 
+      key={template.workout_id}
+      className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+      onClick={() => handleTemplateClick(template)}
+    >
+      <h4 className="font-medium">{template.workout_name}</h4>
+      <div className="flex items-center gap-2 mt-2">
+        <Badge variant="outline">
+          {workoutTypes.find(t => t.id === template.workout_type)?.label}
+        </Badge>
+        <span className="text-sm text-muted-foreground">
+          {template.count} exercises
+        </span>
+      </div>
+    </Card>
+  )
 
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
@@ -493,58 +711,22 @@ export default function BuilderPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Select onValueChange={setSelectedFolder} value={selectedFolder}>
+                  <Select onValueChange={handleFolderSelect} value={selectedFolder}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select folder" />
                     </SelectTrigger>
                     <SelectContent>
-                      {folders
-                        .filter(folder => 
-                          // Filter out separators, empty names, and special folders
-                          !folder.type && 
-                          folder.name && 
-                          folder.name.trim() !== '' && 
-                          !folder.isSpecial
-                        )
-                        .map((folder) => (
-                          <SelectItem key={folder.name || ''} value={folder.name || ''}>
-                            <div className="flex items-center gap-2">
-                              <Folder className="h-4 w-4" />
-                              {folder.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      <Separator className="my-2" />
-                      <div className="p-2">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FolderPlus className="h-4 w-4" />
-                          <span className="text-sm">Add New Folder</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newQuickFolderName}
-                            onChange={(e) => setNewQuickFolderName(e.target.value)}
-                            placeholder="Folder name"
-                            className="h-8"
-                          />
-                          <Button 
-                            size="sm" 
-                            className="h-8"
-                            onClick={() => {
-                              if (newQuickFolderName.trim()) {
-                                setFolders([...folders, {
-                                  name: newQuickFolderName,
-                                  workouts: [],
-                                  isOpen: true
-                                }])
-                                setNewQuickFolderName("")
-                              }
-                            }}
-                          >
-                            Add
-                          </Button>
-                        </div>
-                      </div>
+                      {folders?.map((folder) => (
+                        <SelectItem key={folder.name} value={folder.name}>
+                          <div className="flex items-center gap-2">
+                            <Folder className="h-4 w-4" />
+                            {folder.name}
+                            <span className="text-muted-foreground ml-auto">
+                              ({folder.templates.length})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Button size="icon" variant="outline" onClick={handleReset}>
@@ -672,208 +854,66 @@ export default function BuilderPage() {
         
         <TabsContent value="templates">
           <Card className="p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Folders</h3>
-              <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <FolderPlus className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Folder</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Folder Name</Label>
-                      <Input
-                        id="name"
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                        placeholder="My Folder"
-                      />
-                    </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="shareable"
-                        checked={isShareable}
-                        onCheckedChange={setIsShareable}
-                      />
-                      <Label htmlFor="shareable">Make folder shareable</Label>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Select Templates</Label>
-                      <ScrollArea className="h-[200px] border rounded-md p-4">
-                        {templates.map((template) => (
-                          <div key={template.workout_id} className="flex items-center space-x-2 py-2">
-                            <Checkbox
-                              id={template.workout_id.toString()}
-                              checked={selectedTemplates.includes(template.workout_id.toString())}
-                              onCheckedChange={(checked) => {
-                                setSelectedTemplates(prev => 
-                                  checked 
-                                    ? [...prev, template.workout_id.toString()]
-                                    : prev.filter(id => id !== template.workout_id.toString())
-                                )
-                              }}
-                            />
-                            <Label htmlFor={template.workout_id.toString()}>
-                              {template.workout_name}
-                            </Label>
-                          </div>
-                        ))}
-                      </ScrollArea>
-                    </div>
-
-                    <Button 
-                      className="w-full" 
-                      onClick={() => {
-                        console.log('Create button clicked')
-                        handleCreateFolder()
-                      }}
-                      disabled={!newFolderName.trim()}
-                    >
-                      Create Folder
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-            
             <div className="space-y-6">
-              {/* Folders Section */}
-              <div className="space-y-4">
-                {folders
-                  .filter(folder => !folder.isSpecial && folder.type !== 'separator')
-                  .map((folder, index) => (
+              <div>
+                <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {recentTemplates.map((template: Template) => (
+                    <TemplateCard key={template.workout_id} template={template} />
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">
+                  {view === 'folders' ? 'Folders' : 'All Templates'}
+                </h3>
+                <Button
+                  variant="outline"
+                  onClick={() => setView(view === 'folders' ? 'all' : 'folders')}
+                >
+                  {view === 'folders' ? 'View All' : 'View Folders'}
+                </Button>
+              </div>
+
+              {view === 'folders' ? (
+                <div className="space-y-2">
+                  {folders.map((folder) => (
                     <Collapsible
                       key={folder.name}
-                      open={folder.isOpen}
-                      onOpenChange={(isOpen) => {
-                        setFolders(folders.map((f, i) => 
-                          i === index ? { ...f, isOpen } : f
-                        ))
-                      }}
+                      open={openFolders.includes(folder.name)}
+                      onOpenChange={() => toggleFolder(folder.name)}
                     >
                       <CollapsibleTrigger className="flex items-center gap-2 w-full hover:bg-muted/50 p-2 rounded-md">
-                        <Folder className="h-4 w-4" />
-                        <span className="font-medium">{folder.name}</span>
-                        {folder.isOpen ? (
-                          <ChevronDown className="h-4 w-4 ml-auto" />
+                        {openFolders.includes(folder.name) ? (
+                          <ChevronDown className="h-4 w-4" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 ml-auto" />
+                          <ChevronRight className="h-4 w-4" />
                         )}
+                        <h3 className="font-medium">{folder.name}</h3>
+                        <span className="text-muted-foreground ml-2">
+                          ({folder.templates.length})
+                        </span>
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="pl-6 mt-2">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {folder.workouts?.map((template) => (
-                            <Card 
-                              key={template.workout_id}
-                              className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                              onClick={() => setSelectedTemplate(template)}
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <div>
-                                  <h4 className="font-semibold">{template.workout_name}</h4>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="outline">
-                                      {workoutTypes.find(t => t.id === template.workout_type)?.label}
-                                    </Badge>
-                                    <span className="text-sm text-muted-foreground">
-                                      {template.count} exercises
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {Array.from(new Set(template.exercises.map(e => e.muscle_group))).map(group => (
-                                  <Badge key={group} variant="secondary">
-                                    {workoutTypes.find(t => t.id === group)?.label}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </Card>
+                      <CollapsibleContent>
+                        <div className="grid grid-cols-3 gap-4 mt-2 p-2">
+                          {folder.templates.map((template: Template) => (
+                            <TemplateCard key={template.workout_id} template={template} />
                           ))}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
                   ))}
-              </div>
-
-              <Separator className="my-6" />
-
-              {/* Recent Templates Section */}
-              <div>
-                <h4 className="text-sm font-medium mb-3">Recent Templates</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {templates.slice(0, 3).map((template) => (
-                    <Card 
-                      key={template.workout_id}
-                      className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedTemplate(template)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <h4 className="font-semibold">{template.workout_name}</h4>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">
-                              {workoutTypes.find(t => t.id === template.workout_type)?.label}
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {template.count} exercises
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {Array.from(new Set(template.exercises.map(e => e.muscle_group))).map(group => (
-                          <Badge key={group} variant="secondary">
-                            {workoutTypes.find(t => t.id === group)?.label}
-                          </Badge>
-                        ))}
-                      </div>
-                    </Card>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {allTemplates.map((template: Template) => (
+                    <TemplateCard key={template.workout_id} template={template} />
                   ))}
                 </div>
-              </div>
-
-              {/* All Templates Section */}
-              <div>
-                <h4 className="text-sm font-medium mb-3">All Templates</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {templates.map((template) => (
-                    <Card 
-                      key={template.workout_id}
-                      className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedTemplate(template)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <h4 className="font-semibold">{template.workout_name}</h4>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">
-                              {workoutTypes.find(t => t.id === template.workout_type)?.label}
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {template.count} exercises
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {Array.from(new Set(template.exercises.map(e => e.muscle_group))).map(group => (
-                          <Badge key={group} variant="secondary">
-                            {workoutTypes.find(t => t.id === group)?.label}
-                          </Badge>
-                        ))}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
+              )}
             </div>
           </Card>
 
@@ -882,13 +922,44 @@ export default function BuilderPage() {
             onOpenChange={(open) => !open && setSelectedTemplate(null)}
             template={selectedTemplate}
           />
+
+          <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>{selectedTemplate?.workout_name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {selectedTemplate?.exercises.map((exercise, index) => (
+                  <div key={index} className="flex justify-between items-center">
+                    <span>{exercise.exercise_name}</span>
+                    <span className="text-muted-foreground">
+                      {exercise.sets} × {exercise.reps}
+                    </span>
+                  </div>
+                ))}
+                <Separator className="my-4" />
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleTemplateAction('plan')}
+                  >
+                    Add to Plan
+                  </Button>
+                  <Button
+                    onClick={() => handleTemplateAction('schedule')}
+                  >
+                    Schedule Workout
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="plans">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Training Plans</h3>
-            {/* Plans content will go here */}
-          </Card>
+          <div className="space-y-6">
+            <PlanBuilder />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

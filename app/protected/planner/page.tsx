@@ -17,6 +17,7 @@ import { createClient } from "@/utils/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { workoutTypes } from "@/app/config/workout-types"
+import { TemplateSelectorModal, Template } from "@/components/template-selector-modal"
 
 interface WorkoutEvent {
   workout_id: number
@@ -42,11 +43,16 @@ export default function Planner() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [workouts, setWorkouts] = useState<WorkoutEvent[]>([])
   const [scheduledDates, setScheduledDates] = useState<Date[]>([])
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [templates, setTemplates] = useState<Template[]>([])
+  const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
+  const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
   const supabase = createClient()
   const { toast } = useToast()
 
   useEffect(() => {
     fetchScheduledWorkouts()
+    fetchTemplates()
   }, [])
 
   const fetchScheduledWorkouts = async () => {
@@ -77,6 +83,66 @@ export default function Planner() {
       toast({
         title: "Error",
         description: "Failed to load scheduled workouts",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const fetchTemplates = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('saved_workouts')
+        .select(`
+          workout_id,
+          workout_name,
+          workout_type,
+          exercise_name,
+          sets,
+          reps,
+          muscle_group,
+          created_at,
+          folder
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Group exercises by workout_id
+      const templateMap = new Map<number, Template>()
+      data.forEach(row => {
+        if (!templateMap.has(row.workout_id)) {
+          templateMap.set(row.workout_id, {
+            workout_id: row.workout_id,
+            workout_name: row.workout_name,
+            workout_type: row.workout_type,
+            created_at: row.created_at,
+            folder: row.folder,
+            exercises: [],
+            count: 0
+          })
+        }
+        const template = templateMap.get(row.workout_id)
+        if (template) {
+          template.exercises.push({
+            exercise_name: row.exercise_name,
+            sets: row.sets,
+            reps: row.reps,
+            muscle_group: row.muscle_group
+          })
+          template.count = template.exercises.length
+        }
+      })
+
+      setTemplates(Array.from(templateMap.values()))
+    } catch (error) {
+      console.error('Error fetching templates:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load workout templates",
         variant: "destructive"
       })
     }
@@ -168,11 +234,16 @@ export default function Planner() {
     }
   }
 
+  const handleTemplateSelect = (template: Template) => {
+    console.log('Selected template:', template)
+    // TODO: Add logic to schedule the workout
+  }
+
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-semibold">Workout Planner</h2>
-        <Button size="sm">
+        <Button size="sm" onClick={() => setIsTemplateModalOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Workout
         </Button>
@@ -310,6 +381,15 @@ export default function Planner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <TemplateSelectorModal
+        open={isTemplateModalOpen}
+        onOpenChange={setIsTemplateModalOpen}
+        templates={templates}
+        folders={folders}
+        recentTemplates={recentTemplates}
+        onSelect={handleTemplateSelect}
+      />
     </div>
   )
 }
