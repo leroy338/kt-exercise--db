@@ -12,7 +12,6 @@ import { workoutTypes } from "@/app/config/workout-types"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { saveWorkout } from "@/app/actions/save-workout"
 import { useToast } from "@/components/ui/use-toast"
 import { createClient } from "@/utils/supabase/client"
 import { TemplateViewerModal } from "@/components/template-viewer-modal"
@@ -35,6 +34,7 @@ import {
 } from "@/components/ui/select"
 import { TemplateSelectorModal, Template } from "@/components/template-selector-modal"
 import { PlanBuilder } from "@/components/plan-builder"
+import { saveTemplate } from "@/app/actions/save-template"
 
 interface Exercise {
   name: string
@@ -54,17 +54,24 @@ interface WorkoutItem {
 }
 
 interface SavedWorkout {
-  workout_id: number
-  workout_name: string
-  workout_type: string
-  exercises: {
-    exercise_name: string
-    sets: number
-    reps: number
-    muscle_group: string
-  }[]
+  id: number
+  user_id: string
+  name: string
+  type: string
+  template: {
+    sections: {
+      name: string
+      exercises: {
+        name: string
+        sets: number
+        reps: number
+        rest: number
+        muscleGroups: string[]
+      }[]
+    }[]
+  }
+  is_public: boolean
   created_at: string
-  count: number
 }
 
 interface TemplateFolder {
@@ -76,7 +83,7 @@ interface TemplateFolder {
 }
 
 export default function BuilderPage() {
-  const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
+  const [folders, setFolders] = useState<string[]>([])
   const supabase = createClient()
   const { toast } = useToast()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -85,9 +92,9 @@ export default function BuilderPage() {
   const [workoutName, setWorkoutName] = useState("")
   const [isEditingName, setIsEditingName] = useState(true)
   const [editingExerciseIndex, setEditingExerciseIndex] = useState<number | null>(null)
-  const [templates, setTemplates] = useState<SavedWorkout[]>([])
+  const [templates, setTemplates] = useState<Template[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(true)
-  const [selectedTemplate, setSelectedTemplate] = useState<SavedWorkout | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [foldersState, setFoldersState] = useState<TemplateFolder[]>([
     { name: 'Recent', workouts: [], isOpen: true },
     { name: 'All Templates', workouts: [], isOpen: false },
@@ -105,8 +112,10 @@ export default function BuilderPage() {
   const [allTemplates, setAllTemplates] = useState<Template[]>([])
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
-  const [sharingTemplate, setSharingTemplate] = useState<SavedWorkout | null>(null)
+  const [sharingTemplate, setSharingTemplate] = useState<Template | null>(null)
   const [isTemplateViewerOpen, setIsTemplateViewerOpen] = useState(false)
+  const [isPublic, setIsPublic] = useState(false)
+  const [pendingFolder, setPendingFolder] = useState<string | null>(null)
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -180,62 +189,55 @@ export default function BuilderPage() {
   }
 
   const handleSave = async () => {
-    console.log('Save triggered')
-    
-    if (!workoutName) {
+    if (!workoutName || !workoutType) {
       toast({
         title: "Error",
-        description: "Please enter a workout name",
+        description: "Please enter workout name and type",
         variant: "destructive"
       })
       return
     }
 
-    if (!workoutType) {
-      toast({
-        title: "Error",
-        description: "Please select a workout type",
-        variant: "destructive"
-      })
-      return
+    // Format sections for template
+    const template = {
+      sections: workoutItems.reduce((acc: any[], item, index) => {
+        if (item.type === 'section') {
+          acc.push({
+            name: item.title || `Section ${getNextSectionNumber()}`,
+            exercises: []
+          })
+        } else if (item.type === 'exercise' && item.data) {
+          const currentSection = acc[acc.length - 1]
+          currentSection.exercises.push({
+            name: item.data.name,
+            sets: item.data.sets,
+            reps: item.data.reps,
+            rest: item.data.rest,
+            muscleGroups: item.data.muscleGroups
+          })
+        }
+        return acc
+      }, [])
     }
 
-    const exercises = workoutItems.reduce((acc, item, index) => {
-      if (item.type === 'exercise' && item.data) {
-        const sectionIndex = workoutItems
-          .slice(0, index)
-          .filter(i => i.type === 'section')
-          .length + 1
-        
-        acc.push({
-          ...item.data,
-          section: sectionIndex,
-          section_name: workoutItems
-            .slice(0, index)
-            .filter(i => i.type === 'section')
-            .pop()?.title || `Section ${sectionIndex}`
-        })
-      }
-      return acc
-    }, [] as Exercise[])
-
-    const result = await saveWorkout(
-      exercises,
-      workoutName,
-      exercises.flatMap(e => e.muscleGroups),
-      workoutType,
-      selectedFolder
-    )
+    const result = await saveTemplate({
+      name: workoutName,
+      type: workoutType,
+      template,
+      is_public: isPublic,
+      folder: selectedFolder || undefined
+    })
 
     if (result.success) {
       toast({
         title: "Success",
-        description: "Workout saved successfully"
+        description: "Template saved successfully"
       })
+      fetchFolders()
     } else {
       toast({
         title: "Error",
-        description: "Failed to save workout",
+        description: "Failed to save template",
         variant: "destructive"
       })
     }
@@ -252,78 +254,28 @@ export default function BuilderPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // First get folders
+      // Fetch folders
       const { data: folderData, error: folderError } = await supabase
-        .from('saved_workouts')
+        .from('templates')
         .select('folder')
+        .eq('user_id', user.id)
         .not('folder', 'is', null)
-        .order('folder')
 
-      if (folderError) throw folderError
+      // Fetch all templates
+      const { data: templateData, error: templateError } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
 
-      // Get unique folders
-      const uniqueFolders = Array.from(new Set(folderData.map(row => row.folder)))
-        .map(folderName => ({ name: folderName, templates: [] }))
+      if (!folderError && folderData) {
+        const uniqueFolders = Array.from(new Set(folderData.map(d => d.folder))).filter(Boolean)
+        setFolders(uniqueFolders)
+      }
 
-      // Then get all workouts for these folders
-      const { data: workouts, error: workoutsError } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          created_at,
-          folder
-        `)
-        .in('folder', uniqueFolders.map(f => f.name))
-
-      if (workoutsError) throw workoutsError
-
-      // Group workouts by folder
-      const folderMap = new Map<string, Template[]>(uniqueFolders.map(f => [f.name, []]))
-      
-      // First group by workout_id
-      const workoutMap = new Map()
-      workouts.forEach(row => {
-        if (!workoutMap.has(row.workout_id)) {
-          workoutMap.set(row.workout_id, {
-            workout_id: row.workout_id,
-            workout_name: row.workout_name,
-            workout_type: row.workout_type,
-            created_at: row.created_at,
-            exercises: [],
-            count: 0
-          })
-        }
-        const workout = workoutMap.get(row.workout_id)
-        workout.exercises.push({
-          exercise_name: row.exercise_name,
-          sets: row.sets,
-          reps: row.reps,
-          muscle_group: row.muscle_group
-        })
-        workout.count = workout.exercises.length
-      })
-
-      // Then organize into folders
-      workouts.forEach(row => {
-        const workout = workoutMap.get(row.workout_id)
-        const folderTemplates = folderMap.get(row.folder)
-        if (workout && folderTemplates && !folderTemplates.some((w: { workout_id: number }) => w.workout_id === workout.workout_id)) {
-          folderTemplates.push(workout)
-        }
-      })
-
-      // Update state with organized folders
-      setFolders(Array.from(folderMap.entries()).map(([name, templates]) => ({
-        name,
-        templates
-      })))
-
+      if (!templateError && templateData) {
+        setTemplates(templateData)
+      }
     } catch (error) {
       console.error('Error fetching folders:', error)
       toast({
@@ -335,52 +287,18 @@ export default function BuilderPage() {
   }
 
   const handleFolderSelect = async (folderName: string) => {
-    setSelectedFolder(folderName)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       const { data, error } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          created_at
-        `)
+        .from('templates')
+        .select('*')
         .eq('user_id', user.id)
         .eq('folder', folderName)
 
       if (error) throw error
-
-      // Group by workout_id
-      const templateMap = new Map<number, Template>()
-      data.forEach(row => {
-        if (!templateMap.has(row.workout_id)) {
-          templateMap.set(row.workout_id, {
-            workout_id: row.workout_id,
-            workout_name: row.workout_name,
-            workout_type: row.workout_type,
-            created_at: row.created_at,
-            exercises: [],
-            count: 0
-          })
-        }
-        const template = templateMap.get(row.workout_id)!
-        template.exercises.push({
-          exercise_name: row.exercise_name,
-          sets: row.sets,
-          reps: row.reps,
-          muscle_group: row.muscle_group
-        })
-        template.count = template.exercises.length
-      })
-
-      setTemplates(Array.from(templateMap.values()))
+      setTemplates(data)
     } catch (error) {
       console.error('Error fetching templates:', error)
       toast({
@@ -394,58 +312,16 @@ export default function BuilderPage() {
   async function fetchTemplates() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast({
-          title: "Not authenticated",
-          description: "Please sign in to view templates",
-          variant: "destructive"
-        })
-        return
-      }
+      if (!user) return
 
-      const { data: workoutsData, error: workoutsError } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          created_at
-        `)
+      const { data, error } = await supabase
+        .from('templates')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (workoutsError) throw workoutsError
-
-      // Group workouts
-      const workoutMap = workoutsData.reduce((acc, exercise) => {
-        if (!acc.has(exercise.workout_id)) {
-          acc.set(exercise.workout_id, {
-            workout_id: exercise.workout_id,
-            workout_name: exercise.workout_name,
-            workout_type: exercise.workout_type,
-            created_at: exercise.created_at,
-            exercises: [],
-            count: 0
-          })
-        }
-        
-        const workout = acc.get(exercise.workout_id)!
-        workout.exercises.push({
-          exercise_name: exercise.exercise_name,
-          sets: exercise.sets,
-          reps: exercise.reps,
-          muscle_group: exercise.muscle_group
-        })
-        workout.count++
-        
-        return acc
-      }, new Map())
-
-      setTemplates(Array.from(workoutMap.values()))
+      if (error) throw error
+      setTemplates(data)
     } catch (error) {
       console.error('Error fetching templates:', error)
       toast({
@@ -453,47 +329,14 @@ export default function BuilderPage() {
         description: "Failed to load templates",
         variant: "destructive"
       })
-    } finally {
-      setLoadingTemplates(false)
     }
   }
 
-  const handleCreateFolder = async () => {
+  const handleCreateFolder = () => {
     if (!newFolderName.trim()) return
-    
-    try {
-      console.log('Starting folder creation...')
-      console.log('Selected template IDs:', selectedTemplates)
-      console.log('New folder name:', newFolderName)
-      
-      // Call RPC function
-      const { data, error } = await supabase
-        .rpc('update_workout_folder', { 
-          p_workout_id: Number(selectedTemplates[0]),
-          p_folder_name: newFolderName 
-        })
-
-      if (error) throw error
-      
-      setFoldersState(prev => prev.map((folder) => ({
-        ...folder,
-        workouts: folder.name === 'All Templates' ? data.map((row: string) => ({
-          name: row,
-          isOpen: true
-        })) : undefined
-      })))
-      
-      // Reset form
-      setNewFolderName("")
-      setIsShareable(false)
-      setSelectedTemplates([])
-      setIsCreateFolderOpen(false)
-
-      // Refresh templates
-      fetchTemplates()
-    } catch (error) {
-      console.error('Error creating folder:', error)
-    }
+    setPendingFolder(newFolderName)
+    setSelectedFolder(newFolderName)
+    setNewFolderName("")
   }
 
   const toggleFolder = (folderName: string) => {
@@ -510,46 +353,14 @@ export default function BuilderPage() {
       if (!user) return
 
       const { data, error } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          created_at
-        `)
+        .from('templates')
+        .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
+        .limit(3)
 
       if (error) throw error
-
-      // Group by workout_id
-      const workoutMap = new Map<number, Template>()
-      data.forEach(row => {
-        if (!workoutMap.has(row.workout_id)) {
-          workoutMap.set(row.workout_id, {
-            workout_id: row.workout_id,
-            workout_name: row.workout_name,
-            workout_type: row.workout_type,
-            created_at: row.created_at,
-            exercises: [],
-            count: 0
-          })
-        }
-        const workout = workoutMap.get(row.workout_id)!
-        workout.exercises.push({
-          exercise_name: row.exercise_name,
-          sets: row.sets,
-          reps: row.reps,
-          muscle_group: row.muscle_group
-        })
-        workout.count = workout.exercises.length
-      })
-
-      // Get only the 3 most recent templates
-      setRecentTemplates(Array.from(workoutMap.values()).slice(0, 3))
+      setRecentTemplates(data)
     } catch (error) {
       console.error('Error fetching recent templates:', error)
       toast({
@@ -566,45 +377,13 @@ export default function BuilderPage() {
       if (!user) return
 
       const { data, error } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          created_at
-        `)
+        .from('templates')
+        .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-
-      // Group by workout_id
-      const workoutMap = new Map<number, Template>()
-      data.forEach(row => {
-        if (!workoutMap.has(row.workout_id)) {
-          workoutMap.set(row.workout_id, {
-            workout_id: row.workout_id,
-            workout_name: row.workout_name,
-            workout_type: row.workout_type,
-            created_at: row.created_at,
-            exercises: [],
-            count: 0
-          })
-        }
-        const workout = workoutMap.get(row.workout_id)!
-        workout.exercises.push({
-          exercise_name: row.exercise_name,
-          sets: row.sets,
-          reps: row.reps,
-          muscle_group: row.muscle_group
-        })
-        workout.count = workout.exercises.length
-      })
-
-      setAllTemplates(Array.from(workoutMap.values()))
+      setAllTemplates(data)
     } catch (error) {
       console.error('Error fetching all templates:', error)
       toast({
@@ -617,43 +396,33 @@ export default function BuilderPage() {
 
   const handleTemplateSelect = async (template: Template) => {
     try {
-      const { data: exercises } = await supabase
-        .from('saved_workouts')
-        .select('*')
-        .eq('workout_id', template.workout_id)
-
-      if (!exercises) return
-
-      // Convert exercises to WorkoutItems
       const items: WorkoutItem[] = []
-      let currentSection = 1
       
-      exercises.forEach((exercise) => {
-        if (items.length === 0 || exercise.section !== currentSection) {
-          items.push({
-            type: 'section',
-            data: null,
-            title: exercise.section_name || `Section ${exercise.section}`
-          })
-          currentSection = exercise.section
-        }
-        
+      template.template.sections.forEach((section) => {
         items.push({
-          type: 'exercise',
-          data: {
-            name: exercise.exercise_name,
-            sets: exercise.sets,
-            reps: exercise.reps,
-            rest: exercise.rest || 0,
-            muscleGroups: [exercise.muscle_group],
-            type: exercise.workout_type
-          }
+          type: 'section',
+          data: null,
+          title: section.name
+        })
+        
+        section.exercises.forEach((exercise) => {
+          items.push({
+            type: 'exercise',
+            data: {
+              name: exercise.name,
+              sets: exercise.sets,
+              reps: exercise.reps,
+              rest: exercise.rest,
+              muscleGroups: exercise.muscleGroups,
+              type: template.type
+            }
+          })
         })
       })
 
       setWorkoutItems(items)
-      setWorkoutType(template.workout_type)
-      setWorkoutName(template.workout_name)
+      setWorkoutType(template.type)
+      setWorkoutName(template.name)
       setIsTemplateModalOpen(false)
     } catch (error) {
       console.error('Error loading template:', error)
@@ -693,56 +462,16 @@ export default function BuilderPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get complete workout data with sections
-      const { data: workoutData, error: workoutError } = await supabase
-        .from('saved_workouts')
-        .select(`
-          workout_id,
-          workout_name,
-          workout_type,
-          exercise_name,
-          sets,
-          reps,
-          muscle_group,
-          section,
-          section_name,
-          rest
-        `)
-        .eq('workout_id', template.workout_id)
-        .order('section', { ascending: true })
-
-      if (workoutError) throw workoutError
-
-      // Format workout data with sections
-      const sections = workoutData.reduce((acc: any, exercise) => {
-        const section = exercise.section || 1
-        if (!acc[section]) {
-          acc[section] = {
-            name: exercise.section_name || `Section ${section}`,
-            exercises: []
-          }
-        }
-        acc[section].exercises.push({
-          name: exercise.exercise_name,
-          sets: exercise.sets,
-          reps: exercise.reps,
-          muscle_group: exercise.muscle_group,
-          rest: exercise.rest
-        })
-        return acc
-      }, {})
-
-      // Create thread with shared template
       const { error: threadError } = await supabase
         .from('threads')
         .insert({
-          body: `Shared a workout template: ${template.workout_name}`,
+          body: `Shared a workout template: ${template.name}`,
           user_id: user.id,
           thread_type: 'primary',
           shared_template: {
-            workout_name: template.workout_name,
-            workout_type: template.workout_type,
-            sections: Object.values(sections)
+            workout_name: template.name,
+            workout_type: template.type,
+            sections: template.template.sections
           }
         })
 
@@ -750,7 +479,7 @@ export default function BuilderPage() {
 
       toast({
         title: "Success",
-        description: "Workout shared successfully"
+        description: "Template shared successfully"
       })
     } catch (error) {
       console.error('Error sharing template:', error)
@@ -768,20 +497,21 @@ export default function BuilderPage() {
 
   const TemplateCard = ({ template }: { template: Template }) => (
     <Card 
-      key={template.workout_id}
+      key={template.id}
       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
       onClick={() => {
         setSelectedTemplate(template);
         setIsTemplateViewerOpen(true);
       }}
     >
-      <h4 className="font-medium">{template.workout_name}</h4>
+      <h4 className="font-medium">{template.name}</h4>
       <div className="flex items-center gap-2 mt-2">
         <Badge variant="outline">
-          {workoutTypes.find(t => t.id === template.workout_type)?.label}
+          {workoutTypes.find(t => t.id === template.type)?.label}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {template.count} exercises
+          {template.template.sections.reduce((acc, section) => 
+            acc + section.exercises.length, 0)} exercises
         </span>
         <Button 
           variant="ghost" 
@@ -797,6 +527,12 @@ export default function BuilderPage() {
       </div>
     </Card>
   )
+
+  // Transform folders array before passing to components
+  const formattedFolders = folders.map(folder => ({
+    name: folder,
+    templates: templates.filter(t => t.folder === folder)
+  }))
 
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
@@ -854,22 +590,41 @@ export default function BuilderPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Select onValueChange={handleFolderSelect} value={selectedFolder}>
+                  <Select value={selectedFolder} onValueChange={setSelectedFolder}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select folder" />
                     </SelectTrigger>
                     <SelectContent>
-                      {folders?.map((folder) => (
-                        <SelectItem key={folder.name} value={folder.name}>
+                      <SelectItem value="_none">No folder</SelectItem>
+                      {[...folders, ...(pendingFolder && !folders.includes(pendingFolder) ? [pendingFolder] : [])].map((folder) => (
+                        <SelectItem 
+                          key={`${folder}${folder === pendingFolder ? '-pending' : ''}`} 
+                          value={folder}
+                        >
                           <div className="flex items-center gap-2">
                             <Folder className="h-4 w-4" />
-                            {folder.name}
-                            <span className="text-muted-foreground ml-auto">
-                              ({folder.templates.length})
-                            </span>
+                            {folder}
+                            {folder === pendingFolder && <span className="text-muted-foreground ml-2">(pending)</span>}
                           </div>
                         </SelectItem>
                       ))}
+                      <Separator className="my-2" />
+                      <div className="p-2 flex gap-2">
+                        <Input
+                          placeholder="New folder name"
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          className="h-8"
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={handleCreateFolder}
+                          disabled={!newFolderName.trim()}
+                        >
+                          <FolderPlus className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </SelectContent>
                   </Select>
                   <Button size="icon" variant="outline" onClick={handleReset}>
@@ -1002,7 +757,7 @@ export default function BuilderPage() {
                 <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {recentTemplates.map((template: Template) => (
-                    <TemplateCard key={template.workout_id} template={template} />
+                    <TemplateCard key={template.id} template={template} />
                   ))}
                 </div>
               </div>
@@ -1025,25 +780,25 @@ export default function BuilderPage() {
                 <div className="space-y-2">
                   {folders.map((folder) => (
                     <Collapsible
-                      key={folder.name}
-                      open={openFolders.includes(folder.name)}
-                      onOpenChange={() => toggleFolder(folder.name)}
+                      key={folder}
+                      open={openFolders.includes(folder)}
+                      onOpenChange={() => toggleFolder(folder)}
                     >
                       <CollapsibleTrigger className="flex items-center gap-2 w-full hover:bg-muted/50 p-2 rounded-md">
-                        {openFolders.includes(folder.name) ? (
+                        {openFolders.includes(folder) ? (
                           <ChevronDown className="h-4 w-4" />
                         ) : (
                           <ChevronRight className="h-4 w-4" />
                         )}
-                        <h3 className="font-medium">{folder.name}</h3>
+                        <h3 className="font-medium">{folder}</h3>
                         <span className="text-muted-foreground ml-2">
-                          ({folder.templates.length})
+                          ({templates.filter(t => t.folder === folder).length})
                         </span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="grid grid-cols-3 gap-4 mt-2 p-2">
-                          {folder.templates.map((template: Template) => (
-                            <TemplateCard key={template.workout_id} template={template} />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 p-2">
+                          {templates.filter(t => t.folder === folder).map((template) => (
+                            <TemplateCard key={template.id} template={template} />
                           ))}
                         </div>
                       </CollapsibleContent>
@@ -1053,7 +808,7 @@ export default function BuilderPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {allTemplates.map((template: Template) => (
-                    <TemplateCard key={template.workout_id} template={template} />
+                    <TemplateCard key={template.id} template={template} />
                   ))}
                 </div>
               )}
@@ -1064,7 +819,7 @@ export default function BuilderPage() {
             open={isTemplateModalOpen}
             onOpenChange={setIsTemplateModalOpen}
             templates={templates}
-            folders={folders}
+            folders={formattedFolders}
             recentTemplates={recentTemplates}
             onSelect={handleTemplateSelect}
             onShare={handleShare}

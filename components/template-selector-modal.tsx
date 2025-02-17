@@ -32,18 +32,25 @@ import {
 import { Separator } from "@/components/ui/separator"
 
 export interface Template {
-  workout_id: number
-  workout_name: string
-  workout_type: string
-  created_at: string
-  exercises: {
-    exercise_name: string
-    sets: number
-    reps: number
-    muscle_group: string
-  }[]
-  count: number
+  id: number
+  user_id: string
+  name: string
+  type: string
+  template: {
+    sections: {
+      name: string
+      exercises: {
+        name: string
+        sets: number
+        reps: number
+        rest: number
+        muscleGroups: string[]
+      }[]
+    }[]
+  }
   folder?: string
+  is_public: boolean
+  created_at: string
 }
 
 interface TemplateSelectorModalProps {
@@ -111,15 +118,22 @@ export function TemplateSelectorModal({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {recentTemplates.map((template) => (
                     <Card 
-                      key={template.workout_id}
+                      key={template.id}
                       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => handleTemplateClick(template)}
+                      onClick={() => onSelect(template)}
                     >
-                      <h4 className="font-semibold">{template.workout_name}</h4>
+                      <h4 className="font-semibold">{template.name}</h4>
                       <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="outline">
-                          {workoutTypes.find(t => t.id === template.workout_type)?.label}
+                        <Badge 
+                          variant="outline"
+                          className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
+                        >
+                          {workoutTypes.find(t => t.id === template.type)?.label}
                         </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {template.template.sections.reduce((total, section) => 
+                            total + section.exercises.length, 0)} exercises
+                        </span>
                       </div>
                     </Card>
                   ))}
@@ -152,15 +166,22 @@ export function TemplateSelectorModal({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {folder.templates.map((template) => (
                             <Card 
-                              key={template.workout_id}
+                              key={template.id}
                               className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                              onClick={() => handleTemplateClick(template)}
+                              onClick={() => onSelect(template)}
                             >
-                              <h4 className="font-semibold">{template.workout_name}</h4>
+                              <h4 className="font-semibold">{template.name}</h4>
                               <div className="flex items-center gap-2 mt-2">
-                                <Badge variant="outline">
-                                  {workoutTypes.find(t => t.id === template.workout_type)?.label}
+                                <Badge 
+                                  variant="outline"
+                                  className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
+                                >
+                                  {workoutTypes.find(t => t.id === template.type)?.label}
                                 </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {template.template.sections.reduce((total, section) => 
+                                    total + section.exercises.length, 0)} exercises
+                                </span>
                               </div>
                             </Card>
                           ))}
@@ -178,32 +199,52 @@ export function TemplateSelectorModal({
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{selectedTemplate?.workout_name}</DialogTitle>
+            <DialogTitle>{selectedTemplate?.name}</DialogTitle>
             <div className="flex items-center gap-2 mt-2">
-              <Badge variant="outline">
-                {workoutTypes.find(t => t.id === selectedTemplate?.workout_type)?.label}
+              <Badge 
+                variant="outline"
+                className={`bg-${workoutTypes.find(t => t.id === selectedTemplate?.type)?.color} text-white`}
+              >
+                {workoutTypes.find(t => t.id === selectedTemplate?.type)?.label}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {selectedTemplate?.exercises.length} exercises
+                {selectedTemplate?.template.sections.reduce((total, section) => 
+                  total + section.exercises.length, 0)} exercises
               </span>
             </div>
           </DialogHeader>
 
           <ScrollArea className="h-[50vh]">
             <div className="space-y-4">
-              {selectedTemplate?.exercises.map((exercise, index) => (
-                <div 
-                  key={`${exercise.exercise_name}-${index}`}
-                  className="p-4 border rounded-lg space-y-2"
-                >
-                  <div className="font-medium">{exercise.exercise_name}</div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{exercise.sets} sets × {exercise.reps} reps</span>
-                    <span>•</span>
-                    <Badge variant="secondary">
-                      {muscleGroups.find(g => g.id === exercise.muscle_group)?.label}
-                    </Badge>
-                  </div>
+              {selectedTemplate?.template.sections.map((section, sectionIndex) => (
+                <div key={sectionIndex} className="space-y-4">
+                  <h3 className="font-medium">{section.name}</h3>
+                  {section.exercises.map((exercise, exerciseIndex) => (
+                    <div 
+                      key={`${sectionIndex}-${exerciseIndex}`}
+                      className="p-4 border rounded-lg space-y-2"
+                    >
+                      <div className="font-medium">{exercise.name}</div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{exercise.sets} sets × {exercise.reps} reps</span>
+                        <span>•</span>
+                        <div className="flex gap-1">
+                          {exercise.muscleGroups.map(group => {
+                            const muscleGroup = muscleGroups.find(m => m.id === group)
+                            return (
+                              <Badge 
+                                key={group}
+                                variant="secondary"
+                                className={`${muscleGroup?.color} text-white text-xs`}
+                              >
+                                {muscleGroup?.label}
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>

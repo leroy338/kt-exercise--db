@@ -62,7 +62,18 @@ export default function WorkoutHistory() {
           return
         }
 
-        const { data, error } = await supabase
+        // Get total count of unique workouts for pagination
+        const { data: uniqueWorkouts } = await supabase
+          .from('workout_logs')
+          .select('workout_id')
+          .eq('user_id', user.id)
+
+        const uniqueCount = new Set(uniqueWorkouts?.map(w => w.workout_id)).size
+        setTotalCount(uniqueCount)
+        setTotalPages(Math.ceil(uniqueCount / ITEMS_PER_PAGE))
+
+        // Get paginated workout data
+        const { data: workouts, error } = await supabase
           .from('workout_logs')
           .select('*')
           .eq('user_id', user.id)
@@ -72,7 +83,7 @@ export default function WorkoutHistory() {
         if (error) throw error
 
         // Group by workout_id and created_at
-        const groupedWorkouts = data.reduce((acc: { [key: string]: WorkoutLog }, log) => {
+        const groupedWorkouts = workouts.reduce((acc: { [key: string]: WorkoutLog }, log) => {
           const key = `${log.workout_id}-${log.created_at}`
           if (!acc[key]) {
             acc[key] = {
@@ -98,15 +109,6 @@ export default function WorkoutHistory() {
         }, {})
 
         setWorkouts(Object.values(groupedWorkouts))
-
-        // Get total count for pagination
-        const { count } = await supabase
-          .from('workout_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-
-        setTotalCount(count || 0)
-        setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE))
       } catch (error) {
         console.error('Error fetching workout logs:', error)
         toast({

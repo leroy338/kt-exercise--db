@@ -9,27 +9,32 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar, ListPlus, Share2 } from "lucide-react"
+import { Calendar, Share2 } from "lucide-react"
 import { workoutTypes } from "@/app/config/workout-types"
 import { muscleGroups } from "@/app/config/muscle-groups"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useRouter } from "next/navigation"
 
-interface Exercise {
-  exercise_name: string
-  sets: number
-  reps: number
-  muscle_group: string
-}
-
 interface Template {
-  workout_id: number
-  workout_name: string
-  workout_type: string
-  created_at: string
-  exercises: Exercise[]
-  count: number
+  id: number
+  user_id: string
+  name: string
+  type: string
+  template: {
+    sections: {
+      name: string
+      exercises: {
+        name: string
+        sets: number
+        reps: number
+        rest: number
+        muscleGroups: string[]
+      }[]
+    }[]
+  }
   folder?: string
+  is_public: boolean
+  created_at: string
 }
 
 interface TemplateViewerModalProps {
@@ -57,12 +62,12 @@ export function TemplateViewerModal({
   if (!template) return null
 
   const handleSchedule = () => {
-    router.push(`/protected/workout/schedule/${template.workout_id}`)
+    router.push(`/protected/workout/schedule/${template.id}`)
     onOpenChange(false)
   }
 
   const handleAddToPlan = () => {
-    router.push(`/protected/plans/add/${template.workout_id}`)
+    router.push(`/protected/plans/add/${template.id}`)
     onOpenChange(false)
   }
 
@@ -80,32 +85,52 @@ export function TemplateViewerModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{template.workout_name}</DialogTitle>
+          <DialogTitle>{template.name}</DialogTitle>
           <div className="flex items-center gap-2 mt-2">
-            <Badge variant="outline">
-              {workoutTypes.find(t => t.id === template.workout_type)?.label}
+            <Badge 
+              variant="outline"
+              className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
+            >
+              {workoutTypes.find(t => t.id === template.type)?.label}
             </Badge>
             <span className="text-sm text-muted-foreground">
-              {template.count} exercises
+              {template.template.sections.reduce((total, section) => 
+                total + section.exercises.length, 0)} exercises
             </span>
           </div>
         </DialogHeader>
 
         <ScrollArea className="h-[50vh]">
           <div className="space-y-4">
-            {template.exercises.map((exercise, index) => (
-              <div 
-                key={`${exercise.exercise_name}-${index}`}
-                className="p-4 border rounded-lg space-y-2"
-              >
-                <div className="font-medium">{exercise.exercise_name}</div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>{exercise.sets} sets × {exercise.reps} reps</span>
-                  <span>•</span>
-                  <Badge variant="secondary">
-                    {muscleGroups.find(g => g.id === exercise.muscle_group)?.label}
-                  </Badge>
-                </div>
+            {template.template.sections.map((section, sIndex) => (
+              <div key={sIndex} className="space-y-4">
+                <h3 className="font-medium">{section.name}</h3>
+                {section.exercises.map((exercise, eIndex) => (
+                  <div 
+                    key={`${sIndex}-${eIndex}`}
+                    className="p-4 border rounded-lg space-y-2"
+                  >
+                    <div className="font-medium">{exercise.name}</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{exercise.sets} sets × {exercise.reps} reps</span>
+                      <span>•</span>
+                      <div className="flex gap-1">
+                        {exercise.muscleGroups.map(group => {
+                          const muscleGroup = muscleGroups.find(m => m.id === group)
+                          return (
+                            <Badge 
+                              key={group}
+                              variant="secondary"
+                              className={`${muscleGroup?.color} text-white text-xs`}
+                            >
+                              {muscleGroup?.label}
+                            </Badge>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
