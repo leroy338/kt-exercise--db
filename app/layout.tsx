@@ -12,7 +12,7 @@ const openSans = Open_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "KT Exercise DB",
+  title: "Biohackrr",
   description: "Exercise tracking application",
 }
 

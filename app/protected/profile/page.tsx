@@ -15,6 +15,8 @@ interface Profile {
   handle: string
   avatar_url: string
   email: string
+  team_id?: string
+  team_name?: string
 }
 
 export default function ProfilePage() {
@@ -32,31 +34,48 @@ export default function ProfilePage() {
   const fetchProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        throw new Error('No authenticated user found')
+      }
 
-      const { data, error } = await supabase
+      const { data, error: profileError } = await supabase
         .from('profiles')
-        .select('first_name, last_name, handle, avatar_url')
+        .select(`
+          first_name, 
+          last_name, 
+          handle, 
+          avatar_url,
+          team_id,
+          team_name
+        `)
         .eq('user_id', user.id)
         .single()
 
-      if (error) throw error
+      if (profileError) {
+        throw profileError
+      }
+
+      if (!data) {
+        throw new Error('No profile data found')
+      }
 
       const profileData = {
         first_name: data.first_name || '',
         last_name: data.last_name || '',
         handle: data.handle || '',
         avatar_url: data.avatar_url || '',
-        email: user.email || ''
+        email: user.email || '',
+        team_id: data.team_id || '',
+        team_name: data.team_name || ''
       }
 
       setProfile(profileData)
       setEditForm(profileData)
-    } catch (error) {
-      console.error('Error fetching profile:', error)
+    } catch (error: any) {
+      console.error('Error fetching profile:', error.message || error)
       toast({
         title: "Error",
-        description: "Failed to load profile",
+        description: error.message || "Failed to load profile",
         variant: "destructive"
       })
     } finally {
@@ -212,6 +231,19 @@ export default function ProfilePage() {
             <div>
               <label className="text-sm font-medium">Email</label>
               <p className="mt-1">{profile?.email}</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Team</label>
+              {isEditing ? (
+                <Input
+                  value={editForm?.team_name || ''}
+                  onChange={(e) => setEditForm(prev => ({ ...prev!, team_name: e.target.value }))}
+                  placeholder="Enter team name"
+                />
+              ) : (
+                <p className="mt-1">{profile?.team_name || '-'}</p>
+              )}
             </div>
           </div>
         </div>

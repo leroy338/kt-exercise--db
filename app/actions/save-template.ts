@@ -24,7 +24,7 @@ interface Template {
       sets: number
       reps: number
       rest: number
-      muscle_group: string
+      muscleGroups: string[]
       type: string
     }[]
   }[]
@@ -39,7 +39,7 @@ export async function saveTemplate({
 }: {
   name: string
   type: string
-  template: any
+  template: Template
   is_public?: boolean
   folder?: string
 }) {
@@ -48,7 +48,7 @@ export async function saveTemplate({
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('templates')
       .insert({
         user_id: user.id,
@@ -58,9 +58,10 @@ export async function saveTemplate({
         is_public,
         folder: folder || null
       })
+      .select()
 
     if (error) throw error
-    return { success: true }
+    return { success: true, data }
   } catch (error) {
     console.error('Error saving template:', error)
     return { success: false, error }

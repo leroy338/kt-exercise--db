@@ -47,6 +47,109 @@ interface Template {
   created_at: string
 }
 
+const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleScheduleWorkout, expandedTemplateId }: {
+  template: Template
+  handleCardClick: (id: number, e: React.MouseEvent) => void
+  handleStartWorkout: (id: number) => void
+  handleScheduleWorkout: (id: number) => void
+  expandedTemplateId: number | null
+}) => {
+  const workoutType = workoutTypes.find(t => t.id === template.type)
+  
+  return (
+    <Card 
+      key={`${template.id}-card`}
+      className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+      onClick={(e) => handleCardClick(template.id, e)}
+    >
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">{template.name}</h3>
+            <Badge 
+              variant="outline"
+              className={`bg-${workoutType?.color} text-white`}
+            >
+              {workoutType?.label}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>{new Date(template.created_at).toLocaleDateString()}</span>
+            <span>{template.template.sections.reduce((acc, section) => 
+              acc + section.exercises.length, 0)} exercises</span>
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {expandedTemplateId === template.id && (
+          <div className="space-y-4 border-t pt-4">
+            {/* Muscle Groups */}
+            <div className="flex flex-wrap gap-2">
+              {Array.from(new Set(
+                template.template.sections.flatMap(section => 
+                  section.exercises.flatMap(exercise => exercise.muscleGroups)
+                )
+              )).map(group => {
+                const muscleGroup = muscleGroups.find(g => g.id === group)
+                return (
+                  <Badge 
+                    key={`${template.id}-${group}`} 
+                    variant="secondary"
+                    className={`${muscleGroup?.color} text-white`}
+                  >
+                    {muscleGroup?.label}
+                  </Badge>
+                )
+              })}
+            </div>
+
+            {/* Exercises List */}
+            {template.template.sections.map((section, sectionIndex) => (
+              <div key={`${template.id}-section-${sectionIndex}`}>
+                <h4 className="font-medium mb-2">{section.name}</h4>
+                {section.exercises.map((exercise, exerciseIndex) => (
+                  <div 
+                    key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
+                    className="flex justify-between items-center text-sm"
+                  >
+                    <span className="font-medium">{exercise.name}</span>
+                    <span className="text-muted-foreground">
+                      {exercise.sets} × {exercise.reps}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); handleStartWorkout(template.id) }}
+            title="Start Workout"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Start
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); handleScheduleWorkout(template.id) }}
+            title="Schedule Workout"
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedule
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export default function SavedWorkouts() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedType, setSelectedType] = useState<string>("all")
@@ -164,87 +267,14 @@ export default function SavedWorkouts() {
             <h2 className="text-2xl font-semibold">Recent Workouts</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {recentTemplates.map((template) => (
-                <Card 
-                  key={`${template.id}-card`}
-                  className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={(e) => handleCardClick(template.id, e)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h3 className="font-semibold">{template.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          variant="outline"
-                          className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
-                        >
-                          {workoutTypes.find(t => t.id === template.type)?.label}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {template.template.sections.reduce((acc, section) => 
-                            acc + section.exercises.length, 0)} exercises • {new Date(template.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); handleStartWorkout(template.id) }}
-                        title="Start Workout"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); handleScheduleWorkout(template.id) }}
-                        title="Schedule Workout"
-                      >
-                        <Calendar className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {Array.from(new Set(
-                      template.template.sections.flatMap(section => 
-                        section.exercises.flatMap(exercise => exercise.muscleGroups)
-                      )
-                    )).map(group => {
-                      const muscleGroup = muscleGroups.find(g => g.id === group)
-                      return (
-                        <Badge 
-                          key={`${template.id}-${group}`} 
-                          variant="secondary"
-                          className={`${muscleGroup?.color} text-white`}
-                        >
-                          {muscleGroup?.label}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-
-                  {expandedTemplateId === template.id && (
-                    <div className="mt-4 space-y-2 border-t pt-4">
-                      {template.template.sections.map((section, sectionIndex) => (
-                        <div key={`${template.id}-section-${sectionIndex}`}>
-                          <h4 className="font-medium mb-2">{section.name}</h4>
-                          {section.exercises.map((exercise, exerciseIndex) => (
-                            <div 
-                              key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
-                              className="flex justify-between items-center text-sm"
-                            >
-                              <span className="font-medium">{exercise.name}</span>
-                              <span className="text-muted-foreground">
-                                {exercise.sets} × {exercise.reps}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
+                <WorkoutCard
+                  key={template.id}
+                  template={template}
+                  handleCardClick={handleCardClick}
+                  handleStartWorkout={handleStartWorkout}
+                  handleScheduleWorkout={handleScheduleWorkout}
+                  expandedTemplateId={expandedTemplateId}
+                />
               ))}
             </div>
           </div>
@@ -255,87 +285,14 @@ export default function SavedWorkouts() {
               {templates
                 .filter(template => selectedType === "all" || template.type === selectedType)
                 .map((template) => (
-                  <Card 
-                    key={`${template.id}-card`}
-                    className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={(e) => handleCardClick(template.id, e)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <h3 className="font-semibold">{template.name}</h3>
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            variant="outline"
-                            className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
-                          >
-                            {workoutTypes.find(t => t.id === template.type)?.label}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {template.template.sections.reduce((acc, section) => 
-                              acc + section.exercises.length, 0)} exercises • {new Date(template.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={(e) => { e.stopPropagation(); handleStartWorkout(template.id) }}
-                          title="Start Workout"
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={(e) => { e.stopPropagation(); handleScheduleWorkout(template.id) }}
-                          title="Schedule Workout"
-                        >
-                          <Calendar className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {Array.from(new Set(
-                        template.template.sections.flatMap(section => 
-                          section.exercises.flatMap(exercise => exercise.muscleGroups)
-                        )
-                      )).map(group => {
-                        const muscleGroup = muscleGroups.find(g => g.id === group)
-                        return (
-                          <Badge 
-                            key={`${template.id}-${group}`} 
-                            variant="secondary"
-                            className={`${muscleGroup?.color} text-white`}
-                          >
-                            {muscleGroup?.label}
-                          </Badge>
-                        )
-                      })}
-                    </div>
-
-                    {expandedTemplateId === template.id && (
-                      <div className="mt-4 space-y-2 border-t pt-4">
-                        {template.template.sections.map((section, sectionIndex) => (
-                          <div key={`${template.id}-section-${sectionIndex}`}>
-                            <h4 className="font-medium mb-2">{section.name}</h4>
-                            {section.exercises.map((exercise, exerciseIndex) => (
-                              <div 
-                                key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
-                                className="flex justify-between items-center text-sm"
-                              >
-                                <span className="font-medium">{exercise.name}</span>
-                                <span className="text-muted-foreground">
-                                  {exercise.sets} × {exercise.reps}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
+                  <WorkoutCard
+                    key={template.id}
+                    template={template}
+                    handleCardClick={handleCardClick}
+                    handleStartWorkout={handleStartWorkout}
+                    handleScheduleWorkout={handleScheduleWorkout}
+                    expandedTemplateId={expandedTemplateId}
+                  />
                 ))}
             </div>
           </div>

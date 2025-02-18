@@ -1,51 +1,80 @@
 "use client"
 
 import { ThemeSwitcher } from "@/components/theme-switcher"
-import { createClient } from "@/utils/supabase/client"
-import { useRouter } from "next/navigation"
-import { Button } from "./ui/button"
-import { LogOut } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
+import { FeedDropdown } from "@/components/feed-dropdown"
+import { UserDropdown } from "@/components/user-dropdown"
+import { useAuth } from "@/hooks/use-auth"
+import Image from "next/image"
+import Link from "next/link"
 
 interface HeaderAuthProps {
   className?: string
 }
 
 export function HeaderAuth({ className = "" }: HeaderAuthProps) {
-  const supabase = createClient()
-  const router = useRouter()
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/sign-in')
-  }
+  const { user } = useAuth()
 
   return (
     <header className={`fixed top-0 z-40 w-full border-b bg-background ${className}`}>
       <div className="container flex h-14 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2">
-          <div className="font-semibold">KT Exercise DB</div>
-        </div>
-        
-        <div className="flex items-center gap-3 md:gap-4">
-          <ThemeSwitcher />
-          <Avatar className="h-8 w-8 md:h-9 md:w-9">
-            <AvatarImage 
-              src="https://github.com/shadcn.png" 
-              alt="@shadcn"
-              className="object-cover aspect-square"
+          <Link href="/" className="flex items-center gap-2">
+            <Image 
+              src="/Logo-Transparent.png" 
+              alt="Biohackrr Logo" 
+              width={48} 
+              height={48}
+              className="rounded-full"
             />
-            <AvatarFallback>CN</AvatarFallback>
-          </Avatar>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={handleSignOut}
-            className="h-8 w-8 md:h-9 md:w-9"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+            <div className="font-semibold">Biohackrr</div>
+          </Link>
         </div>
+
+        {user ? (
+          <div className="flex items-center gap-3 md:gap-4">
+            <FeedDropdown />
+            <ThemeSwitcher />
+            <UserDropdown />
+          </div>
+        ) : (
+          <div className="flex items-center gap-6">
+            <nav className="hidden md:flex items-center gap-6">
+              <Link 
+                href="/about" 
+                className="text-sm font-medium text-muted-foreground hover:text-primary"
+              >
+                About
+              </Link>
+              <Link 
+                href="/features" 
+                className="text-sm font-medium text-muted-foreground hover:text-primary"
+              >
+                Features
+              </Link>
+              <Link 
+                href="/pricing" 
+                className="text-sm font-medium text-muted-foreground hover:text-primary"
+              >
+                Pricing
+              </Link>
+            </nav>
+            <div className="flex items-center gap-3">
+              <ThemeSwitcher />
+              <Link 
+                href="/sign-in" 
+                className="text-sm font-medium text-muted-foreground hover:text-primary"
+              >
+                Log in
+              </Link>
+              <Link 
+                href="/sign-up"
+                className="text-sm font-medium bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
+              >
+                Sign up
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   )

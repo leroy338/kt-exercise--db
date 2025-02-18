@@ -82,6 +82,28 @@ interface TemplateFolder {
   type?: 'separator';
 }
 
+interface WorkoutTemplate {
+  id: number
+  user_id: string
+  name: string
+  type: string
+  folder?: string
+  template: {
+    sections: {
+      name: string
+      exercises: {
+        name: string
+        sets: number
+        reps: number
+        rest: number
+        muscleGroups: string[]
+      }[]
+    }[]
+  }
+  is_public: boolean
+  created_at: string
+}
+
 export default function BuilderPage() {
   const [folders, setFolders] = useState<string[]>([])
   const supabase = createClient()
@@ -92,9 +114,9 @@ export default function BuilderPage() {
   const [workoutName, setWorkoutName] = useState("")
   const [isEditingName, setIsEditingName] = useState(true)
   const [editingExerciseIndex, setEditingExerciseIndex] = useState<number | null>(null)
-  const [templates, setTemplates] = useState<Template[]>([])
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(true)
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<WorkoutTemplate | null>(null)
   const [foldersState, setFoldersState] = useState<TemplateFolder[]>([
     { name: 'Recent', workouts: [], isOpen: true },
     { name: 'All Templates', workouts: [], isOpen: false },
@@ -107,12 +129,12 @@ export default function BuilderPage() {
   const [newQuickFolderName, setNewQuickFolderName] = useState("")
   const [selectedFolder, setSelectedFolder] = useState<string>("")
   const [openFolders, setOpenFolders] = useState<string[]>([])
-  const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
+  const [recentTemplates, setRecentTemplates] = useState<WorkoutTemplate[]>([])
   const [view, setView] = useState<'folders' | 'all'>('folders')
-  const [allTemplates, setAllTemplates] = useState<Template[]>([])
+  const [allTemplates, setAllTemplates] = useState<WorkoutTemplate[]>([])
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
-  const [sharingTemplate, setSharingTemplate] = useState<Template | null>(null)
+  const [sharingTemplate, setSharingTemplate] = useState<WorkoutTemplate | null>(null)
   const [isTemplateViewerOpen, setIsTemplateViewerOpen] = useState(false)
   const [isPublic, setIsPublic] = useState(false)
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
@@ -198,35 +220,34 @@ export default function BuilderPage() {
       return
     }
 
-    // Format sections for template
     const template = {
-      sections: workoutItems.reduce((acc: any[], item, index) => {
-        if (item.type === 'section') {
-          acc.push({
-            name: item.title || `Section ${getNextSectionNumber()}`,
-            exercises: []
-          })
-        } else if (item.type === 'exercise' && item.data) {
-          const currentSection = acc[acc.length - 1]
-          currentSection.exercises.push({
-            name: item.data.name,
-            sets: item.data.sets,
-            reps: item.data.reps,
-            rest: item.data.rest,
-            muscleGroups: item.data.muscleGroups
-          })
-        }
-        return acc
-      }, [])
-    }
-
-    const result = await saveTemplate({
       name: workoutName,
       type: workoutType,
-      template,
+      template: {
+        name: workoutName,
+        type: workoutType,
+        sections: workoutItems.reduce((acc: any[], item, index) => {
+          if (item.type === 'section') {
+            acc.push({
+              title: item.title,
+              exercises: []
+            })
+          } else if (item.data && acc.length > 0) {
+            acc[acc.length - 1].exercises.push({
+              name: item.data.name,
+              sets: item.data.sets,
+              reps: item.data.reps,
+              rest: item.data.rest
+            })
+          }
+          return acc
+        }, [])
+      },
       is_public: isPublic,
       folder: selectedFolder || undefined
-    })
+    }
+
+    const result = await saveTemplate(template)
 
     if (result.success) {
       toast({
@@ -394,7 +415,7 @@ export default function BuilderPage() {
     }
   }
 
-  const handleTemplateSelect = async (template: Template) => {
+  const handleTemplateSelect = async (template: WorkoutTemplate) => {
     try {
       const items: WorkoutItem[] = []
       
@@ -413,7 +434,7 @@ export default function BuilderPage() {
               sets: exercise.sets,
               reps: exercise.reps,
               rest: exercise.rest,
-              muscleGroups: exercise.muscleGroups,
+              muscleGroups: [],
               type: template.type
             }
           })
@@ -454,7 +475,7 @@ export default function BuilderPage() {
     setIsTemplateModalOpen(false)
   }
 
-  const handleShare = async (template: Template) => {
+  const handleShare = async (template: WorkoutTemplate) => {
     setIsSharing(true)
     setSharingTemplate(template)
     
@@ -495,9 +516,9 @@ export default function BuilderPage() {
     }
   }
 
-  const TemplateCard = ({ template }: { template: Template }) => (
+  const TemplateCard = ({ template }: { template: WorkoutTemplate }) => (
     <Card 
-      key={template.id}
+      key={template.name}
       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
       onClick={() => {
         setSelectedTemplate(template);
@@ -756,8 +777,8 @@ export default function BuilderPage() {
               <div>
                 <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {recentTemplates.map((template: Template) => (
-                    <TemplateCard key={template.id} template={template} />
+                  {recentTemplates.map((template: WorkoutTemplate) => (
+                    <TemplateCard key={template.name} template={template} />
                   ))}
                 </div>
               </div>
@@ -798,7 +819,7 @@ export default function BuilderPage() {
                       <CollapsibleContent>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 p-2">
                           {templates.filter(t => t.folder === folder).map((template) => (
-                            <TemplateCard key={template.id} template={template} />
+                            <TemplateCard key={template.name} template={template} />
                           ))}
                         </div>
                       </CollapsibleContent>
@@ -807,8 +828,8 @@ export default function BuilderPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {allTemplates.map((template: Template) => (
-                    <TemplateCard key={template.id} template={template} />
+                  {allTemplates.map((template: WorkoutTemplate) => (
+                    <TemplateCard key={template.name} template={template} />
                   ))}
                 </div>
               )}
@@ -819,7 +840,6 @@ export default function BuilderPage() {
             open={isTemplateModalOpen}
             onOpenChange={setIsTemplateModalOpen}
             templates={templates}
-            folders={formattedFolders}
             recentTemplates={recentTemplates}
             onSelect={handleTemplateSelect}
             onShare={handleShare}

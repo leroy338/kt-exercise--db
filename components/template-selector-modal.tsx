@@ -57,7 +57,6 @@ interface TemplateSelectorModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templates: Template[]
-  folders: {name: string, templates: Template[]}[]
   recentTemplates: Template[]
   onSelect: (template: Template) => void
   onShare: (template: Template) => void
@@ -66,28 +65,53 @@ interface TemplateSelectorModalProps {
   actionText?: string
 }
 
+function organizeTemplatesByFolder(templates: Template[]) {
+  const folderMap = templates.reduce((acc, template) => {
+    const folderName = template.folder || 'Uncategorized'
+    if (!acc[folderName]) {
+      acc[folderName] = []
+    }
+    acc[folderName].push(template)
+    return acc
+  }, {} as Record<string, Template[]>)
+
+  return Object.entries(folderMap).map(([name, templates]) => ({
+    name,
+    templates,
+    exerciseCount: templates.reduce((total, template) => 
+      total + template.template.sections.reduce((sectionTotal, section) => 
+        sectionTotal + section.exercises.length, 0
+      ), 0
+    )
+  }))
+}
+
 export function TemplateSelectorModal({
   open,
   onOpenChange,
   templates,
-  folders,
   recentTemplates,
   onSelect,
   onShare,
   sharingTemplate,
   isSharing,
   actionText = "Add to Plan"
-}: TemplateSelectorModalProps) {
-  const [openFolders, setOpenFolders] = useState<string[]>([])
+}: Omit<TemplateSelectorModalProps, 'folders'>) {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [currentView, setCurrentView] = useState<'folders' | 'folder-content'>('folders')
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
 
-  const toggleFolder = (folderName: string) => {
-    setOpenFolders(current =>
-      current.includes(folderName)
-        ? current.filter(name => name !== folderName)
-        : [...current, folderName]
-    )
+  const folders = organizeTemplatesByFolder(templates)
+
+  const handleFolderClick = (folderName: string) => {
+    setSelectedFolder(folderName)
+    setCurrentView('folder-content')
+  }
+
+  const handleBack = () => {
+    setCurrentView('folders')
+    setSelectedFolder(null)
   }
 
   const handleTemplateClick = (template: Template) => {
@@ -108,19 +132,95 @@ export function TemplateSelectorModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Select Workout Template</DialogTitle>
+            <div className="flex items-center">
+              {currentView === 'folder-content' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mr-2"
+                  onClick={handleBack}
+                >
+                  ← Back
+                </Button>
+              )}
+              <DialogTitle>
+                {currentView === 'folders' 
+                  ? "Select Workout Folder" 
+                  : selectedFolder}
+              </DialogTitle>
+            </div>
           </DialogHeader>
+
           <ScrollArea className="h-[60vh]">
-            <div className="space-y-6">
-              {/* Recent Templates Section */}
-              <div>
-                <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {recentTemplates.map((template) => (
+            {currentView === 'folders' ? (
+              <div className="space-y-8">
+                {/* Folders Grid */}
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Folders</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {folders.map((folder) => (
+                      <Card 
+                        key={folder.name}
+                        className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                        onClick={() => handleFolderClick(folder.name)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Folder className="h-5 w-5" />
+                          <h4 className="font-semibold">{folder.name}</h4>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-sm text-muted-foreground">
+                            {folder.templates.length} templates
+                          </span>
+                          <span className="text-sm text-muted-foreground">•</span>
+                          <span className="text-sm text-muted-foreground">
+                            {folder.exerciseCount} exercises
+                          </span>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Recent Templates Section */}
+                {recentTemplates.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {recentTemplates.map((template) => (
+                        <Card 
+                          key={template.id}
+                          className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => onSelect(template)}
+                        >
+                          <h4 className="font-semibold">{template.name}</h4>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge 
+                              variant="outline"
+                              className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
+                            >
+                              {workoutTypes.find(t => t.id === template.type)?.label}
+                            </Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {template.template.sections.reduce((total: number, section: { exercises: any[] }) => 
+                                total + section.exercises.length, 0)} exercises
+                            </span>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {folders
+                  .find(f => f.name === selectedFolder)
+                  ?.templates.map((template) => (
                     <Card 
                       key={template.id}
                       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => onSelect(template)}
+                      onClick={() => handleTemplateClick(template)}
                     >
                       <h4 className="font-semibold">{template.name}</h4>
                       <div className="flex items-center gap-2 mt-2">
@@ -137,61 +237,8 @@ export function TemplateSelectorModal({
                       </div>
                     </Card>
                   ))}
-                </div>
               </div>
-
-              {/* Folders Section */}
-              <div>
-                <h3 className="text-lg font-medium mb-4">Folders</h3>
-                <div className="space-y-2">
-                  {folders.map((folder) => (
-                    <Collapsible
-                      key={folder.name}
-                      open={openFolders.includes(folder.name)}
-                      onOpenChange={() => toggleFolder(folder.name)}
-                    >
-                      <CollapsibleTrigger className="flex items-center w-full p-2 hover:bg-muted rounded-md">
-                        {openFolders.includes(folder.name) ? (
-                          <ChevronDown className="h-4 w-4 mr-2" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 mr-2" />
-                        )}
-                        <Folder className="h-4 w-4 mr-2" />
-                        <span className="font-medium">{folder.name}</span>
-                        <span className="text-muted-foreground ml-2">
-                          ({folder.templates.length})
-                        </span>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pl-8 mt-2">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {folder.templates.map((template) => (
-                            <Card 
-                              key={template.id}
-                              className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                              onClick={() => onSelect(template)}
-                            >
-                              <h4 className="font-semibold">{template.name}</h4>
-                              <div className="flex items-center gap-2 mt-2">
-                                <Badge 
-                                  variant="outline"
-                                  className={`bg-${workoutTypes.find(t => t.id === template.type)?.color} text-white`}
-                                >
-                                  {workoutTypes.find(t => t.id === template.type)?.label}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground">
-                                  {template.template.sections.reduce((total, section) => 
-                                    total + section.exercises.length, 0)} exercises
-                                </span>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </div>
-              </div>
-            </div>
+            )}
           </ScrollArea>
         </DialogContent>
       </Dialog>
@@ -229,7 +276,7 @@ export function TemplateSelectorModal({
                         <span>{exercise.sets} sets × {exercise.reps} reps</span>
                         <span>•</span>
                         <div className="flex gap-1">
-                          {exercise.muscleGroups.map(group => {
+                          {exercise.muscleGroups?.map(group => {
                             const muscleGroup = muscleGroups.find(m => m.id === group)
                             return (
                               <Badge 

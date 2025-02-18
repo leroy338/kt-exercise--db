@@ -42,7 +42,6 @@ export function PlanBuilder() {
   )
   const { toast } = useToast()
   const supabase = createClient()
-  const [folders, setFolders] = useState<{name: string, templates: Template[]}[]>([])
   const [recentTemplates, setRecentTemplates] = useState<Template[]>([])
   const [isSharing, setIsSharing] = useState(false)
   const [sharingTemplate, setSharingTemplate] = useState<Template | null>(null)
@@ -60,26 +59,9 @@ export function PlanBuilder() {
 
         if (error) throw error
 
-        // Group by folders
-        const folderMap = new Map<string, Template[]>()
-        data.forEach(template => {
-          if (template.folder) {
-            if (!folderMap.has(template.folder)) {
-              folderMap.set(template.folder, [])
-            }
-            folderMap.get(template.folder)!.push(template)
-          }
-        })
-
-        setFolders(Array.from(folderMap.entries()).map(([name, templates]) => ({
-          name,
-          templates
-        })))
-
         // Set recent templates
         setRecentTemplates(
           data
-            .filter(t => !t.folder)
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 3)
         )
@@ -260,7 +242,6 @@ export function PlanBuilder() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         templates={templates}
-        folders={folders}
         recentTemplates={recentTemplates}
         onSelect={handleTemplateSelect}
         onShare={handleShare}
