@@ -53,53 +53,16 @@ export function PlanBuilder() {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
 
-        const { data: workoutsData, error } = await supabase
-          .from('saved_workouts')
-          .select(`
-            workout_id,
-            workout_name,
-            workout_type,
-            exercise_name,
-            sets,
-            reps,
-            muscle_group,
-            created_at,
-            folder
-          `)
+        const { data, error } = await supabase
+          .from('templates')
+          .select('*')
           .eq('user_id', user.id)
 
         if (error) throw error
 
-        // Group workouts
-        const workoutMap = new Map<number, Template>()
-        workoutsData.forEach(exercise => {
-          if (!workoutMap.has(exercise.workout_id)) {
-            workoutMap.set(exercise.workout_id, {
-              workout_id: exercise.workout_id,
-              workout_name: exercise.workout_name,
-              workout_type: exercise.workout_type,
-              created_at: exercise.created_at,
-              folder: exercise.folder,
-              exercises: [],
-              count: 0
-            })
-          }
-          
-          const workout = workoutMap.get(exercise.workout_id)!
-          workout.exercises.push({
-            exercise_name: exercise.exercise_name,
-            sets: exercise.sets,
-            reps: exercise.reps,
-            muscle_group: exercise.muscle_group
-          })
-          workout.count++
-        })
-
-        const templates = Array.from(workoutMap.values())
-        
         // Group by folders
         const folderMap = new Map<string, Template[]>()
-        templates.forEach(template => {
+        data.forEach(template => {
           if (template.folder) {
             if (!folderMap.has(template.folder)) {
               folderMap.set(template.folder, [])
@@ -115,13 +78,13 @@ export function PlanBuilder() {
 
         // Set recent templates
         setRecentTemplates(
-          templates
+          data
             .filter(t => !t.folder)
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 3)
         )
 
-        setTemplates(templates)
+        setTemplates(data)
       } catch (error) {
         console.error('Error fetching templates:', error)
       }
@@ -161,7 +124,7 @@ export function PlanBuilder() {
     setIsModalOpen(false)
     toast({
       title: "Template Added",
-      description: `Added ${template.workout_name} to Day ${selectedDay}`
+      description: `Added ${template.name} to Day ${selectedDay}`
     })
   }
 
@@ -190,7 +153,7 @@ export function PlanBuilder() {
     setDays(currentDays => 
       currentDays.map(day => 
         day.id === dayId
-          ? { ...day, workouts: day.workouts.filter(w => w.workout_id !== workoutId) }
+          ? { ...day, workouts: day.workouts.filter(w => w.id !== workoutId) }
           : day
       )
     )
@@ -243,10 +206,10 @@ export function PlanBuilder() {
                       ) : (
                         <div className="space-y-1">
                           {day.workouts.map((workout, index) => (
-                            <div key={`${day.id}-${workout.workout_id}-${index}`} className="flex items-center gap-2">
-                              <span className="font-medium">{workout.workout_name}</span>
+                            <div key={`${day.id}-${workout.id}-${index}`} className="flex items-center gap-2">
+                              <span className="font-medium">{workout.name}</span>
                               <Badge variant="outline">
-                                {workoutTypes.find(t => t.id === workout.workout_type)?.label}
+                                {workoutTypes.find(t => t.id === workout.type)?.label}
                               </Badge>
                             </div>
                           ))}
@@ -277,7 +240,7 @@ export function PlanBuilder() {
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => handleRemoveWorkout(day.id, day.workouts[0].workout_id)}
+                              onClick={() => handleRemoveWorkout(day.id, day.workouts[0].id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
