@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/sidebar"
 import { HeaderAuth } from "@/components/header-auth"
+import { Analytics } from "@vercel/analytics/react"
 
 export default function ProtectedLayout({
   children,
@@ -15,6 +16,7 @@ export default function ProtectedLayout({
           {children}
         </div>
       </main>
+      <Analytics />
     </div>
   )
 } 
