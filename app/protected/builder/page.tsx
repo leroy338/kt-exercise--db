@@ -104,6 +104,39 @@ interface WorkoutTemplate {
   created_at: string
 }
 
+interface TemplateData {
+  name: string
+  type: string
+  template: {
+    sections: {
+      name: string
+      exercises: {
+        name: string
+        sets: number
+        reps: number
+        rest: number
+        muscleGroups: string[]
+      }[]
+    }[]
+  }
+  is_public: boolean
+  folder?: string
+  user_id: string
+}
+
+interface TemplateStructure {
+  sections: {
+    name: string;
+    exercises: {
+      name: string;
+      sets: number;
+      reps: number;
+      rest: number;
+      muscleGroups: string[];
+    }[];
+  }[];
+}
+
 export default function BuilderPage() {
   const [folders, setFolders] = useState<string[]>([])
   const supabase = createClient()
@@ -138,6 +171,7 @@ export default function BuilderPage() {
   const [isTemplateViewerOpen, setIsTemplateViewerOpen] = useState(false)
   const [isPublic, setIsPublic] = useState(false)
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("builder")
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -210,17 +244,11 @@ export default function BuilderPage() {
     setWorkoutItems(prev => prev.filter((_, i) => i !== index))
   }
 
-  const handleSave = async () => {
-    if (!workoutName || !workoutType) {
-      toast({
-        title: "Error",
-        description: "Please enter workout name and type",
-        variant: "destructive"
-      })
-      return
-    }
+  const handleSaveTemplate = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
-    const template = {
+    const templateData = {
       name: workoutName,
       type: workoutType,
       template: {
@@ -229,7 +257,7 @@ export default function BuilderPage() {
         sections: workoutItems.reduce((acc: any[], item, index) => {
           if (item.type === 'section') {
             acc.push({
-              title: item.title,
+              name: item.title || `Section ${index + 1}`,
               exercises: []
             })
           } else if (item.data && acc.length > 0) {
@@ -237,30 +265,32 @@ export default function BuilderPage() {
               name: item.data.name,
               sets: item.data.sets,
               reps: item.data.reps,
-              rest: item.data.rest
+              rest: item.data.rest,
+              muscleGroups: item.data.muscleGroups
             })
           }
           return acc
         }, [])
       },
       is_public: isPublic,
-      folder: selectedFolder || undefined
+      folder: selectedFolder || undefined,
+      user_id: user.id
     }
 
-    const result = await saveTemplate(template)
-
+    const result = await saveTemplate(templateData)
+    
     if (result.success) {
       toast({
         title: "Success",
         description: "Template saved successfully"
       })
-      fetchFolders()
-    } else {
-      toast({
-        title: "Error",
-        description: "Failed to save template",
-        variant: "destructive"
-      })
+      
+      // Refresh templates
+      await fetchTemplates()
+      await fetchRecentTemplates()
+      
+      // Switch to templates tab
+      setActiveTab("templates")
     }
   }
 
@@ -518,7 +548,7 @@ export default function BuilderPage() {
 
   const TemplateCard = ({ template }: { template: WorkoutTemplate }) => (
     <Card 
-      key={template.name}
+      key={`${template.id}-${template.name}`}
       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
       onClick={() => {
         setSelectedTemplate(template);
@@ -564,7 +594,7 @@ export default function BuilderPage() {
         You can then use the template to create a new workout.
       </p>
 
-      <Tabs defaultValue="builder" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="builder">Builder</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
@@ -651,7 +681,7 @@ export default function BuilderPage() {
                   <Button size="icon" variant="outline" onClick={handleReset}>
                     <RotateCcw className="h-4 w-4" />
                   </Button>
-                  <Button size="icon" variant="outline" onClick={handleSave}>
+                  <Button size="icon" variant="outline" onClick={handleSaveTemplate}>
                     <Save className="h-4 w-4" />
                   </Button>
                   <Button size="icon" variant="outline">
@@ -778,7 +808,7 @@ export default function BuilderPage() {
                 <h3 className="text-lg font-medium mb-4">Recent Templates</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {recentTemplates.map((template: WorkoutTemplate) => (
-                    <TemplateCard key={template.name} template={template} />
+                    <TemplateCard key={`${template.id}-${template.name}`} template={template} />
                   ))}
                 </div>
               </div>
@@ -801,7 +831,7 @@ export default function BuilderPage() {
                 <div className="space-y-2">
                   {folders.map((folder) => (
                     <Collapsible
-                      key={folder}
+                      key={`folder-${folder}-${Date.now()}`}
                       open={openFolders.includes(folder)}
                       onOpenChange={() => toggleFolder(folder)}
                     >
@@ -819,7 +849,7 @@ export default function BuilderPage() {
                       <CollapsibleContent>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 p-2">
                           {templates.filter(t => t.folder === folder).map((template) => (
-                            <TemplateCard key={template.name} template={template} />
+                            <TemplateCard key={`${template.id}-${template.name}`} template={template} />
                           ))}
                         </div>
                       </CollapsibleContent>
@@ -829,7 +859,7 @@ export default function BuilderPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {allTemplates.map((template: WorkoutTemplate) => (
-                    <TemplateCard key={template.name} template={template} />
+                    <TemplateCard key={`${template.id}-${template.name}`} template={template} />
                   ))}
                 </div>
               )}

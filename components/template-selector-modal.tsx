@@ -30,6 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
 
 export interface Template {
   id: number
@@ -51,6 +52,7 @@ export interface Template {
   folder?: string
   is_public: boolean
   created_at: string
+  startTime?: string
 }
 
 interface TemplateSelectorModalProps {
@@ -248,11 +250,8 @@ export function TemplateSelectorModal({
           <DialogHeader>
             <DialogTitle>{selectedTemplate?.name}</DialogTitle>
             <div className="flex items-center gap-2 mt-2">
-              <Badge 
-                variant="outline"
-                className={`bg-${workoutTypes.find(t => t.id === selectedTemplate?.type)?.color} text-white`}
-              >
-                {workoutTypes.find(t => t.id === selectedTemplate?.type)?.label}
+              <Badge variant="outline">
+                {selectedTemplate?.type}
               </Badge>
               <span className="text-sm text-muted-foreground">
                 {selectedTemplate?.template.sections.reduce((total, section) => 
