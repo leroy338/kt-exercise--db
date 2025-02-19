@@ -16,6 +16,11 @@ import {
 } from "@/components/ui/table"
 import { toast } from "@/components/ui/use-toast"
 import React from "react"
+import { Tables, TablesInsert } from "@/types/database.types"
+
+type SavedWorkout = Tables<'saved_workouts'>
+type ScheduledWorkout = TablesInsert<'scheduled_workouts'>
+type WorkoutLog = TablesInsert<'workout_logs'>
 
 interface Exercise {
   exercise_name: string
@@ -29,14 +34,8 @@ interface Exercise {
   muscle_group: string
 }
 
-interface WorkoutLog {
-  workout_id: number
-  workout_name: string
-  exercises: Exercise[]
-}
-
 export function WorkoutForm({ workoutId }: { workoutId: string }) {
-  const [workout, setWorkout] = useState<WorkoutLog | null>(null)
+  const [workout, setWorkout] = useState<{ workout_id: number, workout_name: string, exercises: Exercise[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedExercise, setExpandedExercise] = useState<number | null>(null)
   const supabase = createClient()
@@ -59,7 +58,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
       }
 
       if (data && data.length > 0) {
-        const workoutLog: WorkoutLog = {
+        const workoutLog: { workout_id: number, workout_name: string, exercises: Exercise[] } = {
           workout_id: data[0].workout_id,
           workout_name: data[0].workout_name,
           exercises: data.map(exercise => ({
@@ -93,64 +92,38 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
     setWorkout(newWorkout)
   }
 
-  const handleComplete = async () => {
+  const handleScheduleWorkout = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        toast({
-          title: "Not authenticated",
-          description: "Please sign in to log workouts",
-          variant: "destructive"
-        })
+        toast({ title: "Not authenticated", variant: "destructive" })
         return
       }
 
-      // Get the workout template details
-      const { data: workoutTemplate } = await supabase
-        .from('saved_workouts')
-        .select('workout_name, workout_type')
-        .eq('workout_id', workoutId)
-        .limit(1)
-        .single()
-
-      if (!workoutTemplate) {
-        throw new Error('Workout template not found')
+      const scheduledWorkout = {
+        user_id: user.id,
+        workout_id: parseInt(workoutId),  // Changed from template_id to workout_id
+        scheduled_for: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
-      // Insert all exercises as separate log entries
       const { error } = await supabase
-        .from('workout_logs')
-        .insert(
-          workout!.exercises.flatMap(exercise => 
-            exercise.sets.map(set => ({
-              workout_id: parseInt(workoutId),
-              workout_name: workoutTemplate.workout_name,
-              workout_type: workoutTemplate.workout_type,
-              exercise_name: exercise.exercise_name,
-              sets: exercise.target_sets,
-              reps: exercise.target_reps,
-              rest: 60, // default rest time
-              muscle_group: exercise.muscle_group,
-              user_id: user.id,
-              weight: set.weight || 0,
-              reps_completed: set.reps_completed || 0,
-            }))
-          )
-        )
+        .from('scheduled_workouts')
+        .insert(scheduledWorkout)
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error details:', error)
+        throw error
+      }
 
-      toast({
-        title: "Workout Completed",
-        description: "Your workout has been logged successfully."
-      })
-      
+      toast({ title: "Success", description: "Workout scheduled successfully" })
       router.push('/protected/workout-history')
     } catch (err) {
-      console.error('Error logging workout:', err)
+      console.error('Error scheduling workout:', err)
       toast({
         title: "Error",
-        description: "Failed to log workout",
+        description: err instanceof Error ? err.message : "Failed to schedule workout",
         variant: "destructive"
       })
     }
@@ -237,8 +210,8 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
         </Table>
 
         <div className="mt-6 flex justify-end">
-          <Button onClick={handleComplete}>
-            Complete Workout
+          <Button onClick={handleScheduleWorkout}>
+            Schedule Workout
           </Button>
         </div>
       </div>

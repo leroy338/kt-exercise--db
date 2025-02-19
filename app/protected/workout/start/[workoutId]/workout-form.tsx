@@ -9,6 +9,9 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/use-toast"
 import { Progress } from "@/components/ui/progress"
+import { Tables } from "@/types/database.types"
+
+type WorkoutLog = Tables<'workout_logs'>
 
 interface Exercise {
   name: string
@@ -139,7 +142,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
         return
       }
 
-      // Insert workout log
+      // Insert workout logs using the correct types
       const { error } = await supabase
         .from('workout_logs')
         .insert(
@@ -147,17 +150,18 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
             section.exercises.flatMap(exercise =>
               exercise.completedSets.map(set => ({
                 user_id: user.id,
-                template_id: template!.id,
+                workout_id: parseInt(workoutId),
                 workout_name: template!.name,
                 workout_type: template!.type,
                 exercise_name: exercise.name,
-                muscle_groups: exercise.muscleGroups,
+                muscle_group: exercise.muscleGroups[0], // Using first muscle group
                 weight: set.weight,
                 reps_completed: set.reps_completed,
-                target_sets: exercise.sets,
-                target_reps: exercise.reps,
-                rest: exercise.rest
-              }))
+                sets: exercise.sets,
+                reps: exercise.reps,
+                rest: exercise.rest,
+                created_at: new Date().toISOString()
+              } satisfies Omit<WorkoutLog, 'id'>))
             )
           )
         )

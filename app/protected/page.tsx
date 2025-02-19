@@ -1,5 +1,6 @@
 import { WorkoutStatsChart } from "@/app/protected/components/workout-stats-chart"
 import { TodaysWorkouts } from "@/app/protected/components/todays-workouts"
+import { WeeklyMuscleGroups } from "@/components/weekly-muscle-groups"
 
 export default function ProtectedHome() {
   return (
@@ -10,8 +11,11 @@ export default function ProtectedHome() {
           Track your workouts and monitor your progress
         </p>
       </div>
-      <div className="grid gap-8 md:grid-cols-2">
-        <TodaysWorkouts />
+      <div className="grid gap-8">
+        <div className="grid gap-8 md:grid-cols-2">
+          <TodaysWorkouts />
+          <WeeklyMuscleGroups scheduledWorkouts={[]} />
+        </div>
         <WorkoutStatsChart />
       </div>
     </div>
