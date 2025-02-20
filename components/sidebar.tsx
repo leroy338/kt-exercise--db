@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList, User, Users, BarChart } from 'lucide-react'
+import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList, User, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from "@/utils/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -28,7 +28,6 @@ const mainNavItems = [
   { href: "/protected/planner", label: "Planner", icon: Calendar },
   { href: "/protected/feed", label: "Feed", icon: LayoutList },
   { href: "/protected/team", label: "Team", icon: Users },
-  { href: "/protected/analytics", label: "Analytics", icon: BarChart },
 ]
 
 const workoutNavItems = [
@@ -62,9 +61,10 @@ function NavContent({ profile, onNavigate }: {
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground",
+                  "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
                   pathname === item.href ? "bg-accent text-foreground" : ""
                 )}
+                style={{ cursor: 'pointer' }}
               >
                 <item.icon className="h-5 w-5" />
                 <span>{item.label}</span>
@@ -155,11 +155,13 @@ function NavContent({ profile, onNavigate }: {
   )
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ onNavigate }: SidebarProps) {
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [isOpen, setIsOpen] = useState(false)
   const supabase = createClient()
-  const pathname = usePathname()
 
   useEffect(() => {
     async function loadProfile() {
@@ -172,62 +174,21 @@ export function Sidebar() {
         .eq('user_id', user.id)
         .single()
 
-      if (error) {
-        console.error('Error loading profile:', error.message)
-        return
-      }
-
       if (data) {
-        setProfile({
-          avatar_url: data.avatar_url,
-          email: data.email,
-          first_name: data.first_name,
-          last_name: data.last_name
-        })
+        setProfile(data)
       }
     }
 
     loadProfile()
   }, [])
 
-  const onNavigate = () => {
-    setIsOpen(false)
-  }
-
+  // Only render desktop version
   return (
-    <>
-      {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 w-full h-14 border-b bg-background z-40 px-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <SheetHeader className="px-4 pt-4">
-                <SheetTitle>Navigation Menu</SheetTitle>
-              </SheetHeader>
-              <div className="h-full py-4 px-2">
-                <NavContent profile={profile} onNavigate={() => setIsOpen(false)} />
-              </div>
-            </SheetContent>
-          </Sheet>
-          <span className="font-semibold">KT Exercise DB</span>
-        </div>
-
-        <div className="flex items-center">
-          <ThemeSwitcher />
-        </div>
-      </div>
-
-      {/* Desktop Sidebar */}
-      <aside className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-64 border-r bg-background hidden lg:block z-30">
-        <div className="flex flex-col h-full p-4">
-          <NavContent profile={profile} onNavigate={onNavigate} />
-        </div>
-      </aside>
-    </>
+    <aside className="hidden lg:block fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-64 border-r bg-background pointer-events-auto z-30">
+      <NavContent profile={profile} onNavigate={onNavigate} />
+    </aside>
   )
-} 
+}
+
+// Export NavContent for reuse in MobileNav
+export { NavContent } 

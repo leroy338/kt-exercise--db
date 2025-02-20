@@ -4,6 +4,7 @@ import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "next-themes"
 import { cn } from "@/lib/utils"
+import { MobileNav } from "@/components/mobile-nav"
 
 const openSans = Open_Sans({
   subsets: ["latin"],
@@ -14,6 +15,16 @@ const openSans = Open_Sans({
 export const metadata: Metadata = {
   title: "Biohackrr",
   description: "Exercise tracking application",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "black" }
+  ],
 }
 
 export default function RootLayout({
@@ -22,16 +33,30 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning={true}>
-      <body suppressHydrationWarning={true} className={cn("min-h-screen bg-background antialiased", openSans.className)}>
+    <html lang="en" className="overflow-x-hidden" suppressHydrationWarning={true}>
+      <body 
+        suppressHydrationWarning={true} 
+        className={cn(
+          "min-h-screen bg-background antialiased",
+          "w-screen overflow-x-hidden touch-pan-y",
+          openSans.className
+        )}
+      >
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster />
+          <div className="flex min-h-screen flex-col w-full overflow-x-hidden">
+            <MobileNav />
+            <main className="flex-1 w-full overflow-x-hidden">
+              <div className="w-full overflow-x-hidden">
+                {children}
+              </div>
+            </main>
+            <Toaster />
+          </div>
         </ThemeProvider>
       </body>
     </html>

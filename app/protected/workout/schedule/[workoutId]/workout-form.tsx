@@ -6,14 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/use-toast"
 import React from "react"
 import { Tables, TablesInsert } from "@/types/database.types"
@@ -129,56 +122,63 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
     }
   }
 
-  if (loading) return <div className="p-6">Loading...</div>
-  if (!workout) return <div className="p-6">Workout not found</div>
+  if (loading) return <div className="p-4">Loading...</div>
+  if (!workout) return <div className="p-4">Workout not found</div>
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">{workout.workout_name}</h1>
-        
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Exercise</TableHead>
-              <TableHead>Target Sets</TableHead>
-              <TableHead>Target Reps</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {workout.exercises.map((exercise, exerciseIndex) => (
-              <React.Fragment key={exerciseIndex}>
-                <TableRow 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setExpandedExercise(
-                    expandedExercise === exerciseIndex ? null : exerciseIndex
-                  )}
-                >
-                  <TableCell>{exercise.exercise_name}</TableCell>
-                  <TableCell>{exercise.target_sets}</TableCell>
-                  <TableCell>{exercise.target_reps}</TableCell>
-                  <TableCell>
-                    {expandedExercise === exerciseIndex ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </TableCell>
-                </TableRow>
-                
-                {expandedExercise === exerciseIndex && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="p-4">
-                      <div className="space-y-4">
-                        {exercise.sets.map((set, setIndex) => (
-                          <div key={setIndex} className="grid grid-cols-3 gap-4">
-                            <div className="flex items-center">
-                              Set {set.set_number}
-                            </div>
+    <div className="container max-w-lg mx-auto px-4 py-6">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col space-y-2">
+          <h1 className="text-2xl font-bold">{workout.workout_name}</h1>
+          <p className="text-muted-foreground">
+            Schedule this workout for later
+          </p>
+        </div>
+
+        {/* Exercise List */}
+        <div className="space-y-4">
+          {workout.exercises.map((exercise, exerciseIndex) => (
+            <Card key={exerciseIndex} className="overflow-hidden">
+              {/* Exercise Header */}
+              <div 
+                className="p-4 flex items-center justify-between cursor-pointer hover:bg-muted/50"
+                onClick={() => setExpandedExercise(
+                  expandedExercise === exerciseIndex ? null : exerciseIndex
+                )}
+              >
+                <div className="space-y-1">
+                  <h3 className="font-medium">{exercise.exercise_name}</h3>
+                  <div className="text-sm text-muted-foreground">
+                    {exercise.target_sets} sets × {exercise.target_reps} reps
+                  </div>
+                </div>
+                {expandedExercise === exerciseIndex ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </div>
+
+              {/* Exercise Details */}
+              {expandedExercise === exerciseIndex && (
+                <div className="border-t">
+                  {exercise.sets.map((set, setIndex) => (
+                    <div 
+                      key={setIndex} 
+                      className={`p-4 ${setIndex !== 0 ? 'border-t' : ''}`}
+                    >
+                      <div className="space-y-3">
+                        <div className="font-medium text-sm">
+                          Set {set.set_number}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <label className="text-sm text-muted-foreground">
+                              Weight (lbs)
+                            </label>
                             <Input
                               type="number"
-                              placeholder="Weight (lbs)"
                               value={set.weight || ''}
                               onChange={(e) => updateSet(
                                 exerciseIndex,
@@ -186,10 +186,15 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                                 'weight',
                                 Number(e.target.value)
                               )}
+                              className="h-9"
                             />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm text-muted-foreground">
+                              Reps
+                            </label>
                             <Input
                               type="number"
-                              placeholder={`Reps (target: ${exercise.target_reps})`}
                               value={set.reps_completed || ''}
                               onChange={(e) => updateSet(
                                 exerciseIndex,
@@ -197,23 +202,34 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                                 'reps_completed',
                                 Number(e.target.value)
                               )}
+                              className="h-9"
                             />
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </React.Fragment>
-            ))}
-          </TableBody>
-        </Table>
-
-        <div className="mt-6 flex justify-end">
-          <Button onClick={handleScheduleWorkout}>
-            Schedule Workout
-          </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          ))}
         </div>
+
+        {/* Action Buttons */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
+          <div className="container max-w-lg mx-auto">
+            <Button 
+              onClick={handleScheduleWorkout} 
+              className="w-full"
+              size="lg"
+            >
+              Schedule Workout
+            </Button>
+          </div>
+        </div>
+
+        {/* Bottom Padding for Fixed Button */}
+        <div className="h-16" />
       </div>
     </div>
   )

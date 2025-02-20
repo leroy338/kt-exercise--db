@@ -28,38 +28,41 @@ export function WeeklyMuscleGroups({ scheduledWorkouts }: WeeklyMuscleGroupsProp
   return (
     <Card className="p-4">
       <h3 className="text-lg font-semibold mb-4">Weekly Muscle Focus</h3>
-      <div className="relative w-full aspect-[1/2] max-w-[250px] mx-auto">
-        <svg viewBox="0 0 100 170" className="w-full">
-          {/* Body outline */}
-          <path
-            d={bodyOutlinePath}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="0.5"
-            className="opacity-50"
-          />
-          
-          {/* Muscle groups in specific order for proper layering */}
-          {['traps', 'back', 'core', 'chest', 'shoulders', 'biceps', 'triceps', 'legs'].map(id => {
-            const group = muscleGroups.find(g => g.id === id)
-            if (!group) return null
-            return (
-              <path
-                key={group.id}
-                d={group.svgPath}
-                className={cn(
-                  "transition-colors duration-200",
-                  scheduledMuscleGroups.includes(group.id)
-                    ? group.color
-                    : "fill-muted-foreground/10"
-                )}
-              />
-            )
-          })}
-        </svg>
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        {/* Body diagram */}
+        <div className="relative w-full max-w-[200px] aspect-[1/2]">
+          <svg viewBox="0 0 100 170" className="w-full">
+            {/* Body outline */}
+            <path
+              d={bodyOutlinePath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.5"
+              className="opacity-50"
+            />
+            
+            {/* Muscle groups in specific order for proper layering */}
+            {['traps', 'back', 'core', 'chest', 'shoulders', 'biceps', 'triceps', 'legs'].map(id => {
+              const group = muscleGroups.find(g => g.id === id)
+              if (!group) return null
+              return (
+                <path
+                  key={group.id}
+                  d={group.svgPath}
+                  className={cn(
+                    "transition-colors duration-200",
+                    scheduledMuscleGroups.includes(group.id)
+                      ? group.color
+                      : "fill-muted-foreground/10"
+                  )}
+                />
+              )
+            })}
+          </svg>
+        </div>
 
         {/* Legend */}
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-1 gap-2 w-full sm:max-w-[150px]">
           {muscleGroups.map(group => (
             <div 
               key={group.id}
