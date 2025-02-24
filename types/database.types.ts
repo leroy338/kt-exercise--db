@@ -717,6 +717,62 @@ export type Database = {
         }
         Relationships: []
       }
+      recipes: {
+        Row: {
+          id: number
+          recipe_name: string
+          duration: number
+          duration_type: "hours" | "minutes"
+          folder: string | null
+          categories: string[]
+          ingredients: Json
+          steps: Json
+          notes: string | null
+          created_at: string
+          updated_at: string
+          user_id: string
+          header_image: string | null
+        }
+        Insert: {
+          id?: number
+          recipe_name: string
+          duration: number
+          duration_type: "hours" | "minutes"
+          folder?: string | null
+          categories?: string[]
+          ingredients: Json
+          steps: Json
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          user_id: string
+          header_image?: string | null
+        }
+        Update: {
+          id?: number
+          recipe_name?: string
+          duration?: number
+          duration_type?: "hours" | "minutes"
+          folder?: string | null
+          categories?: string[]
+          ingredients?: Json
+          steps?: Json
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+          header_image?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList, User, Users } from 'lucide-react'
+import { Home, Dumbbell, FolderOpen, History, Menu, Plus, Calendar, ChevronDown, ChevronRight, LayoutList, User, Users, UtensilsCrossed } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createClient } from "@/utils/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -37,6 +37,11 @@ const workoutNavItems = [
   { href: "/protected/workout-history", label: "History", icon: History }
 ]
 
+const mealNavItems = [
+  { href: "/protected/meals/recipes", label: "Recipes", icon: FolderOpen },
+  { href: "/protected/meals/meal-plan", label: "Meal Plan", icon: Calendar },
+]
+
 interface Profile {
   avatar_url: string | null
   email: string
@@ -49,7 +54,8 @@ function NavContent({ profile, onNavigate }: {
   onNavigate?: () => void 
 }) {
   const pathname = usePathname()
-  const [isWorkoutsOpen, setIsWorkoutsOpen] = useState(true)
+  const [isWorkoutsOpen, setIsWorkoutsOpen] = useState(false)
+  const [isMealsOpen, setIsMealsOpen] = useState(false)
 
   return (
     <div className="flex flex-col h-full">
@@ -99,6 +105,50 @@ function NavContent({ profile, onNavigate }: {
               </CollapsibleTrigger>
               <CollapsibleContent className="pl-10 space-y-2 pt-2">
                 {workoutNavItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground",
+                      pathname === item.href ? "bg-accent text-foreground" : ""
+                    )}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </li>
+
+          <li className="pt-2">
+            <Collapsible
+              open={isMealsOpen}
+              onOpenChange={setIsMealsOpen}
+              className="w-full"
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "w-full justify-between px-3 py-2 font-normal hover:bg-accent text-muted-foreground hover:text-foreground",
+                    mealNavItems.some(item => pathname === item.href) ? "bg-accent/50 text-foreground" : ""
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <UtensilsCrossed className="h-5 w-5" />
+                    <span>Meals</span>
+                  </div>
+                  {isMealsOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pl-10 space-y-2 pt-2">
+                {mealNavItems.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

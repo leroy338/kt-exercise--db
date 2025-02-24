@@ -9,7 +9,7 @@ export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
   const supabase = await createClient();
-  const origin = (await headers()).get("origin");
+  const productionUrl = "https://kt-exercise-db.vercel.app";
 
   if (!email || !password) {
     return encodedRedirect(
@@ -23,7 +23,7 @@ export const signUpAction = async (formData: FormData) => {
     email,
     password,
     options: {
-      emailRedirectTo: `${origin}/auth/callback`,
+      emailRedirectTo: `${productionUrl}/auth/callback`,
     },
   });
 
@@ -132,3 +132,24 @@ export const signOutAction = async () => {
   await supabase.auth.signOut();
   return redirect("/sign-in");
 };
+
+export const uploadRecipeImage = async (file: File) => {
+  const supabase = await createClient()
+  
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${Math.random()}.${fileExt}`
+  
+  const { error: uploadError, data } = await supabase.storage
+    .from('recipe_images')
+    .upload(`header-images/${fileName}`, file)
+
+  if (uploadError) {
+    throw uploadError
+  }
+  
+  const { data: { publicUrl } } = supabase.storage
+    .from('recipe_images')
+    .getPublicUrl(`header-images/${fileName}`)
+    
+  return publicUrl
+}

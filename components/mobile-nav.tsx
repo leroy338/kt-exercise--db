@@ -9,6 +9,7 @@ import { createClient } from "@/utils/supabase/client"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useAuth } from "@/hooks/use-auth"
 
 interface Profile {
   avatar_url: string | null
@@ -18,7 +19,13 @@ interface Profile {
 }
 
 export function MobileNav() {
+  const { user } = useAuth()
+  
+  // If user is not authenticated, don't render the mobile nav
+  if (!user) return null
+
   const [isOpen, setIsOpen] = useState(false)
+  const [isWorkoutsOpen, setIsWorkoutsOpen] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
   const pathname = usePathname()
   const supabase = createClient()
@@ -74,7 +81,7 @@ export function MobileNav() {
             </div>
           </div>
         </DialogTrigger>
-        <DialogContent className="w-72 p-4 rounded-xl border-2 border-cyan-400/50 backdrop-blur-xl bg-background/60">
+        <DialogContent className="w-72 p-4 rounded-xl border-2 border-cyan-400/50 backdrop-blur-xl bg-background/60 relative">
           <DialogTitle className="text-center text-base font-medium mb-3">
             Menu
           </DialogTitle>
@@ -98,26 +105,31 @@ export function MobileNav() {
                       </Link>
                     ) : (
                       <>
-                        <div className="flex items-center gap-3 px-3 py-2 text-muted-foreground">
+                        <button
+                          onClick={() => setIsWorkoutsOpen(!isWorkoutsOpen)}
+                          className="flex items-center gap-3 px-3 py-2 text-muted-foreground w-full hover:bg-accent/50"
+                        >
                           <span className="text-lg">{item.icon}</span>
                           <span className="text-sm font-medium">{item.label}</span>
-                        </div>
-                        <div className="pl-4 grid gap-1">
-                          {item.items?.map((subItem) => (
-                            <Link
-                              key={subItem.href}
-                              href={subItem.href}
-                              onClick={() => setIsOpen(false)}
-                              className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent/50",
-                                pathname === subItem.href ? "bg-accent/50" : ""
-                              )}
-                            >
-                              <span className="text-lg">{subItem.icon}</span>
-                              <span className="text-sm">{subItem.label}</span>
-                            </Link>
-                          ))}
-                        </div>
+                        </button>
+                        {isWorkoutsOpen && (
+                          <div className="pl-4 grid gap-1">
+                            {item.items?.map((subItem) => (
+                              <Link
+                                key={subItem.href}
+                                href={subItem.href}
+                                onClick={() => setIsOpen(false)}
+                                className={cn(
+                                  "flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent/50",
+                                  pathname === subItem.href ? "bg-accent/50" : ""
+                                )}
+                              >
+                                <span className="text-lg">{subItem.icon}</span>
+                                <span className="text-sm">{subItem.label}</span>
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
