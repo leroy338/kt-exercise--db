@@ -20,11 +20,8 @@ interface Profile {
 
 export function MobileNav() {
   const { user } = useAuth()
-  
-  // If user is not authenticated, don't render the mobile nav
-  if (!user) return null
-
   const [isOpen, setIsOpen] = useState(false)
+  const [otherState, setOtherState] = useState(false)
   const [isWorkoutsOpen, setIsWorkoutsOpen] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
   const pathname = usePathname()
@@ -64,6 +61,8 @@ export function MobileNav() {
     },
     { href: "/protected/profile", label: "Profile", icon: "👤" },
   ]
+
+  if (!user) return null
 
   return (
     <div className="block lg:hidden">

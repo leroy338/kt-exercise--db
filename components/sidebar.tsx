@@ -218,24 +218,23 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('avatar_url, email, first_name, last_name')
         .eq('user_id', user.id)
         .single()
 
-      if (data) {
-        setProfile(data)
-      }
+      if (data) setProfile(data)
     }
 
     loadProfile()
   }, [])
 
-  // Only render desktop version
   return (
     <aside className="hidden lg:block fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-64 border-r bg-background pointer-events-auto z-30">
-      <NavContent profile={profile} onNavigate={onNavigate} />
+      <ScrollArea className="h-full">
+        <NavContent profile={profile} onNavigate={onNavigate} />
+      </ScrollArea>
     </aside>
   )
 }
