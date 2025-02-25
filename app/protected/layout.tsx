@@ -2,7 +2,6 @@
 
 import { Sidebar } from "@/components/sidebar"
 import { HeaderAuth } from "@/components/header-auth"
-import { Analytics } from "@vercel/analytics/react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -47,7 +46,6 @@ export default function ProtectedLayout({
           {children}
         </div>
       </main>
-      <Analytics />
     </div>
   )
 } 
