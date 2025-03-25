@@ -29,6 +29,7 @@ interface Exercise {
   rest: number
   muscleGroups: string[]
   type: string
+  equipment?: string[]
 }
 
 interface ExerciseSelectorModalProps {
@@ -45,34 +46,51 @@ export function ExerciseSelectorModal({
   onExerciseSelect,
   workoutType
 }: ExerciseSelectorModalProps) {
-  const [step, setStep] = useState<"type" | "exercises" | "details">("type")
-  const [selectedType, setSelectedType] = useState("")
+  const [step, setStep] = useState<"exercises" | "details">("exercises")
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string>()
   const [selectedExercise, setSelectedExercise] = useState<typeof exercises[0] | null>(null)
   const [sets, setSets] = useState("3")
   const [reps, setReps] = useState("10")
   const [rest, setRest] = useState("60")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterType, setFilterType] = useState<"muscle" | "type">("muscle")
 
   const filteredExercises = exercises.filter(exercise => {
-    if (!selectedMuscleGroup) return exercise.type === (workoutType || selectedType)
-    return exercise.type === (workoutType || selectedType) && exercise.muscleGroups.includes(selectedMuscleGroup)
+    const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase())
+    let matchesFilter = true
+    
+    if (filterType === "muscle" && selectedMuscleGroup) {
+      matchesFilter = exercise.muscleGroups.includes(selectedMuscleGroup)
+    } else if (filterType === "type" && selectedMuscleGroup) {
+      matchesFilter = exercise.type === selectedMuscleGroup
+    }
+    
+    return matchesSearch && matchesFilter
   })
+
+  const getFilterOptions = () => {
+    switch (filterType) {
+      case "muscle":
+        return muscleGroups
+      case "type":
+        return workoutTypes
+      default:
+        return []
+    }
+  }
 
   useEffect(() => {
     if (open) {
-      setStep(workoutType ? "exercises" : "type")
-      setSelectedType(workoutType || "")
+      setStep("exercises")
       setSelectedMuscleGroup(undefined)
       setSelectedExercise(null)
       setSets("3")
       setReps("10")
       setRest("60")
+      setSearchQuery("")
+      setFilterType("muscle")
     }
-  }, [open, workoutType])
-
-  const handleNext = () => {
-    setStep("exercises")
-  }
+  }, [open])
 
   const handleExerciseSelect = (exercise: typeof exercises[0]) => {
     setSelectedExercise(exercise)
@@ -87,7 +105,7 @@ export function ExerciseSelectorModal({
     
     onExerciseSelect({
       ...selectedExercise,
-      type: selectedType,
+      type: workoutType || "strength",
       sets: parseInt(sets),
       reps: parseInt(reps),
       rest: parseInt(rest)
@@ -99,8 +117,7 @@ export function ExerciseSelectorModal({
   }
 
   const resetForm = () => {
-    setStep(workoutType ? "exercises" : "type")
-    setSelectedType(workoutType || "")
+    setStep("exercises")
     setSelectedMuscleGroup(undefined)
     setSelectedExercise(null)
     setSets("3")
@@ -118,51 +135,31 @@ export function ExerciseSelectorModal({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {step === "type" ? "Select Workout Type" : 
-             step === "exercises" ? "Select Exercise" : 
-             "Set Exercise Details"}
+            {step === "exercises" ? "Select Exercise" : "Set Exercise Details"}
           </DialogTitle>
         </DialogHeader>
 
-        {step === "type" ? (
-          <div className="space-y-6 py-4">
-            <div className="space-y-2">
-              <Label>Exercise Type</Label>
-              <Select onValueChange={setSelectedType} value={selectedType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select exercise type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workoutTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button 
-              className="w-full" 
-              onClick={handleNext}
-              disabled={!selectedType}
-            >
-              Next
-            </Button>
-          </div>
-        ) : step === "exercises" ? (
+        {step === "exercises" ? (
           <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Search exercises..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1"
+              />
+            </div>
             <div className="flex flex-wrap gap-2">
-              {muscleGroups.map((group) => (
+              {getFilterOptions().map((option) => (
                 <Button
-                  key={group.id}
+                  key={option.id}
                   size="sm"
-                  variant={selectedMuscleGroup === group.id ? "default" : "outline"}
+                  variant={selectedMuscleGroup === option.id ? "default" : "outline"}
                   onClick={() => setSelectedMuscleGroup(
-                    selectedMuscleGroup === group.id ? undefined : group.id
+                    selectedMuscleGroup === option.id ? undefined : option.id
                   )}
                 >
-                  {group.label}
+                  {option.label}
                 </Button>
               ))}
             </div>

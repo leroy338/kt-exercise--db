@@ -24,6 +24,24 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
+import React from "react"
 
 interface Template {
   id: number
@@ -106,19 +124,21 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
 
             {/* Exercises List */}
             {template.template.sections.map((section, sectionIndex) => (
-              <div key={`${template.id}-section-${sectionIndex}`}>
-                <h4 className="font-medium mb-2">{section.name}</h4>
-                {section.exercises.map((exercise, exerciseIndex) => (
-                  <div 
-                    key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
-                    className="flex justify-between items-center text-sm"
-                  >
-                    <span className="font-medium">{exercise.name}</span>
-                    <span className="text-muted-foreground">
-                      {exercise.sets} × {exercise.reps}
-                    </span>
-                  </div>
-                ))}
+              <div key={`${template.id}-section-${sectionIndex}`} className="space-y-2">
+                <h3 className="font-bold text-lg">{section.name}</h3>
+                <div className="grid gap-2">
+                  {section.exercises.map((exercise, exerciseIndex) => (
+                    <div 
+                      key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
+                      className="flex justify-between items-center text-sm"
+                    >
+                      <span className="font-medium">{exercise.name}</span>
+                      <span className="text-muted-foreground">
+                        {exercise.sets} × {exercise.reps}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -152,13 +172,16 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
 
 export default function SavedWorkouts() {
   const [templates, setTemplates] = useState<Template[]>([])
-  const [selectedType, setSelectedType] = useState<string>("all")
   const [loading, setLoading] = useState(true)
   const [expandedTemplateId, setExpandedTemplateId] = useState<number | null>(null)
   const [folders, setFolders] = useState<string[]>([])
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+  const [selectedFolder, setSelectedFolder] = useState<string>("all")
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null)
 
   useEffect(() => {
     async function fetchTemplates() {
@@ -227,7 +250,23 @@ export default function SavedWorkouts() {
     setExpandedTemplateId(expandedTemplateId === templateId ? null : templateId)
   }
 
+  const handleRowClick = (templateId: number) => {
+    setExpandedRowId(expandedRowId === templateId ? null : templateId)
+  }
+
   const recentTemplates = templates.slice(0, 3)
+
+  const paginatedTemplates = templates
+    .filter(template => 
+      selectedFolder === "all" || template.folder === selectedFolder
+    )
+    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  const totalPages = Math.ceil(
+    templates.filter(template => 
+      selectedFolder === "all" || template.folder === selectedFolder
+    ).length / itemsPerPage
+  )
 
   if (loading) {
     return <div className="p-6">Loading...</div>
@@ -235,31 +274,16 @@ export default function SavedWorkouts() {
 
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold">Workouts</h2>
+      </div>
+
       <Tabs defaultValue="all" className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Workouts</h2>
-          <div className="flex items-center gap-4">
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="folders">Folders</TabsTrigger>
-            </TabsList>
-            <Select
-              value={selectedType}
-              onValueChange={(value) => setSelectedType(value)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {workoutTypes.map(type => (
-                  <SelectItem key={type.id} value={type.id}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex justify-end">
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="folders">Folders</TabsTrigger>
+          </TabsList>
         </div>
 
         <TabsContent value="all" className="space-y-8">
@@ -281,19 +305,157 @@ export default function SavedWorkouts() {
 
           <div className="space-y-4">
             <h2 className="text-2xl font-semibold">All Workouts</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {templates
-                .filter(template => selectedType === "all" || template.type === selectedType)
-                .map((template) => (
-                  <WorkoutCard
-                    key={template.id}
-                    template={template}
-                    handleCardClick={handleCardClick}
-                    handleStartWorkout={handleStartWorkout}
-                    handleScheduleWorkout={handleScheduleWorkout}
-                    expandedTemplateId={expandedTemplateId}
-                  />
-                ))}
+            <div className="flex items-center gap-4">
+              <Select
+                value={selectedFolder}
+                onValueChange={(value) => setSelectedFolder(value)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by folder" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Folders</SelectItem>
+                  {folders.map(folder => (
+                    <SelectItem key={folder} value={folder}>
+                      {folder}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Folder</TableHead>
+                    <TableHead className="text-right">Exercises</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedTemplates.map((template) => {
+                    const workoutType = workoutTypes.find(t => t.id === template.type)
+                    const exerciseCount = template.template.sections.reduce(
+                      (acc, section) => acc + section.exercises.length, 
+                      0
+                    )
+                    
+                    return (
+                      <React.Fragment key={template.id}>
+                        <TableRow 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleRowClick(template.id)}
+                        >
+                          <TableCell className="font-medium">{template.name}</TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant="outline"
+                              className={`bg-${workoutType?.color} text-white`}
+                            >
+                              {workoutType?.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {template.folder ? (
+                              <span className="text-muted-foreground">
+                                {template.folder}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground italic">
+                                No folder
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{exerciseCount}</TableCell>
+                          <TableCell>{new Date(template.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); handleStartWorkout(template.id) }}
+                                title="Start Workout"
+                              >
+                                <Play className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); handleScheduleWorkout(template.id) }}
+                                title="Schedule Workout"
+                              >
+                                <Calendar className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {expandedRowId === template.id && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="bg-muted/50">
+                              <div className="py-4 space-y-4">
+                                {template.template.sections.map((section, sectionIndex) => (
+                                  <div key={`${template.id}-section-${sectionIndex}`} className="space-y-2">
+                                    <h3 className="font-bold text-lg">{section.name}</h3>
+                                    <div className="grid gap-2">
+                                      {section.exercises.map((exercise, exerciseIndex) => (
+                                        <div 
+                                          key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
+                                          className="flex justify-between items-center text-sm"
+                                        >
+                                          <span className="font-medium">{exercise.name}</span>
+                                          <span className="text-muted-foreground">
+                                            {exercise.sets} × {exercise.reps}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            
+            <div className="mt-4">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    {currentPage > 1 && (
+                      <PaginationPrevious 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      />
+                    )}
+                  </PaginationItem>
+                  
+                  {[...Array(totalPages)].map((_, i) => (
+                    <PaginationItem key={i + 1}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(i + 1)}
+                        isActive={currentPage === i + 1}
+                      >
+                        {i + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  
+                  <PaginationItem>
+                    {currentPage < totalPages && (
+                      <PaginationNext 
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      />
+                    )}
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             </div>
           </div>
         </TabsContent>

@@ -1,7 +1,7 @@
 import { WorkoutStatsChart } from "@/app/protected/components/workout-stats-chart"
 import { TodaysWorkouts } from "@/app/protected/components/todays-workouts"
 import { WeeklyMuscleGroups } from "@/components/weekly-muscle-groups"
-
+import { BodyweightTracker } from "@/components/bodyweight-tracker"
 export default function ProtectedHome() {
   return (
     <div className="w-full overflow-x-hidden">
@@ -22,7 +22,7 @@ export default function ProtectedHome() {
                 <TodaysWorkouts />
               </div>
               <div className="w-full overflow-hidden">
-                <WeeklyMuscleGroups scheduledWorkouts={[]} />
+                <BodyweightTracker />
               </div>
             </div>
             <div className="w-full overflow-hidden bg-card rounded-lg p-4">

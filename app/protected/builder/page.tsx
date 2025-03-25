@@ -9,6 +9,7 @@ import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { workoutTypes } from "@/app/config/workout-types"
+import { muscleGroups } from "@/app/config/muscle-groups"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -172,6 +173,7 @@ export default function BuilderPage() {
   const [isPublic, setIsPublic] = useState(false)
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("builder")
+  const [selectedSectionType, setSelectedSectionType] = useState<string>()
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
@@ -608,14 +610,6 @@ export default function BuilderPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <h3 className="text-lg font-semibold">Workout Builder</h3>
                   <div className="flex items-center gap-3">
-                    {workoutType && (
-                      <Badge 
-                        variant="secondary" 
-                        className="w-[120px] text-center px-4"
-                      >
-                        {workoutTypes.find(t => t.id === workoutType)?.label}
-                      </Badge>
-                    )}
                     <div className="flex items-center gap-2">
                       <Input
                         placeholder="Workout name"
@@ -706,12 +700,26 @@ export default function BuilderPage() {
                         item.type === 'section' ? (
                           <TableRow key={`section-${index}`}>
                             <TableCell colSpan={5}>
-                              <Input 
-                                placeholder="Section title"
-                                className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
-                                value={item.title || ''}
-                                onChange={(e) => handleSectionTitleChange(index, e.target.value)}
-                              />
+                              <div className="flex items-center gap-4">
+                                <Input 
+                                  placeholder="Section title"
+                                  className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
+                                  value={item.title || ''}
+                                  onChange={(e) => handleSectionTitleChange(index, e.target.value)}
+                                />
+                                <Select value={selectedSectionType} onValueChange={setSelectedSectionType}>
+                                  <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="Select type" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {workoutTypes.map((type) => (
+                                      <SelectItem key={type.id} value={type.id}>
+                                        {type.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ) : (
