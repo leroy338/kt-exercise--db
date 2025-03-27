@@ -4,7 +4,6 @@ import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "next-themes"
 import { cn } from "@/lib/utils"
-import { MobileNav } from "@/components/mobile-nav"
 
 const openSans = Open_Sans({
   subsets: ["latin"],
@@ -49,7 +48,6 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col w-full overflow-x-hidden">
-            <MobileNav />
             <main className="flex-1 w-full overflow-x-hidden">
               <div className="w-full overflow-x-hidden">
                 {children}

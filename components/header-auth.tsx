@@ -13,7 +13,7 @@ interface HeaderAuthProps {
   children?: React.ReactNode
 }
 
-export function HeaderAuth({ className = "" }: HeaderAuthProps) {
+export function HeaderAuth({ className = "", children }: HeaderAuthProps) {
   const { user } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -28,6 +28,7 @@ export function HeaderAuth({ className = "" }: HeaderAuthProps) {
       <header className={`mx-auto ${className}`}>
         <div className="flex h-14 items-center justify-between px-4 md:container">
           <div className="flex items-center gap-2 min-w-0">
+            {children}
             <Link href="/" className="flex items-center gap-2">
               <Image 
                 src="/Logo-Transparent.png" 

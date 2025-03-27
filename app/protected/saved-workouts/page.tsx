@@ -5,7 +5,7 @@ import { createClient } from "@/utils/supabase/client"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Play, Calendar, Folder } from "lucide-react"
+import { Play, Calendar, Folder, Share2 } from "lucide-react"
 import { muscleGroups } from "@/app/config/muscle-groups"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
@@ -42,37 +42,136 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import React from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import type { Database } from "@/types/database.types"
 
-interface Template {
-  id: number
-  user_id: string
+type Template = Database['public']['Tables']['templates']['Row']
+type ThreadInsert = Database['public']['Tables']['threads']['Insert']
+type Json = Database['public']['Tables']['templates']['Row']['template']
+
+interface TemplateSection {
   name: string
-  type: string
-  template: {
-    sections: {
-      name: string
-      exercises: {
-        name: string
-        sets: number
-        reps: number
-        rest: number
-        muscleGroups: string[]
-      }[]
-    }[]
-  }
-  folder?: string
-  is_public: boolean
-  created_at: string
+  exercises: {
+    name: string
+    sets: number
+    reps: number
+    rest: number
+    muscleGroups: string[]
+  }[]
 }
 
-const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleScheduleWorkout, expandedTemplateId }: {
+interface TemplateStructure {
+  sections: TemplateSection[]
+}
+
+function isTemplateStructure(json: unknown): json is TemplateStructure {
+  if (typeof json !== 'object' || json === null) return false
+  const obj = json as { sections?: unknown }
+  if (!('sections' in obj) || !Array.isArray(obj.sections)) return false
+  return true
+}
+
+interface ShareWorkoutModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  template: Template | null
+  onShare: (message: string) => Promise<void>
+}
+
+function ShareWorkoutModal({ open, onOpenChange, template, onShare }: ShareWorkoutModalProps) {
+  const [message, setMessage] = useState("")
+  const [isSharing, setIsSharing] = useState(false)
+  const { toast } = useToast()
+
+  const handleShare = async () => {
+    try {
+      setIsSharing(true)
+      await onShare(message)
+      onOpenChange(false)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to share workout",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
+  if (!template?.template) return null
+
+  if (!isTemplateStructure(template.template)) return null
+  const templateData = template.template
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Share Workout</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="message">Message</Label>
+            <Input
+              id="message"
+              placeholder="Add a message about this workout..."
+              value={message}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessage(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Workout Preview</Label>
+            <div className="space-y-4">
+              {templateData.sections.map((section: TemplateSection, idx: number) => (
+                <div key={idx}>
+                  <h3 className="font-medium mb-2">{section.name}</h3>
+                  <div className="space-y-2">
+                    {section.exercises.map((exercise, exerciseIdx: number) => (
+                      <div key={exerciseIdx} className="text-sm">
+                        {exercise.name} - {exercise.sets}×{exercise.reps}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <Button 
+            className="w-full" 
+            onClick={handleShare}
+            disabled={isSharing}
+          >
+            {isSharing ? "Sharing..." : "Share Workout"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleScheduleWorkout, handleShare, expandedTemplateId }: {
   template: Template
   handleCardClick: (id: number, e: React.MouseEvent) => void
   handleStartWorkout: (id: number) => void
   handleScheduleWorkout: (id: number) => void
+  handleShare: (template: Template) => void
   expandedTemplateId: number | null
 }) => {
   const workoutType = workoutTypes.find(t => t.id === template.type)
+  
+  if (!template.template || !isTemplateStructure(template.template)) {
+    return null
+  }
+
+  const templateData = template.template as unknown as TemplateStructure
   
   return (
     <Card 
@@ -94,7 +193,7 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
           </div>
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>{new Date(template.created_at).toLocaleDateString()}</span>
-            <span>{template.template.sections.reduce((acc, section) => 
+            <span>{templateData.sections.reduce((acc: number, section: TemplateSection) => 
               acc + section.exercises.length, 0)} exercises</span>
           </div>
         </div>
@@ -105,7 +204,7 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
             {/* Muscle Groups */}
             <div className="flex flex-wrap gap-2">
               {Array.from(new Set(
-                template.template.sections.flatMap(section => 
+                templateData.sections.flatMap((section: TemplateSection) => 
                   section.exercises.flatMap(exercise => exercise.muscleGroups)
                 )
               )).map(group => {
@@ -123,11 +222,11 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
             </div>
 
             {/* Exercises List */}
-            {template.template.sections.map((section, sectionIndex) => (
+            {templateData.sections.map((section: TemplateSection, sectionIndex: number) => (
               <div key={`${template.id}-section-${sectionIndex}`} className="space-y-2">
                 <h3 className="font-bold text-lg">{section.name}</h3>
                 <div className="grid gap-2">
-                  {section.exercises.map((exercise, exerciseIndex) => (
+                  {section.exercises.map((exercise, exerciseIndex: number) => (
                     <div 
                       key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
                       className="flex justify-between items-center text-sm"
@@ -164,6 +263,15 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
             <Calendar className="h-4 w-4 mr-2" />
             Schedule
           </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); handleShare(template) }}
+            title="Share Workout"
+          >
+            <Share2 className="h-4 w-4 mr-2" />
+            Share
+          </Button>
         </div>
       </div>
     </Card>
@@ -182,6 +290,7 @@ export default function SavedWorkouts() {
   const itemsPerPage = 10
   const [selectedFolder, setSelectedFolder] = useState<string>("all")
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null)
+  const [templateToShare, setTemplateToShare] = useState<Template | null>(null)
 
   useEffect(() => {
     async function fetchTemplates() {
@@ -268,6 +377,36 @@ export default function SavedWorkouts() {
     ).length / itemsPerPage
   )
 
+  const handleShareWorkout = async (message: string) => {
+    if (!templateToShare?.template || !isTemplateStructure(templateToShare.template)) return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('No authenticated user')
+
+    // Create a thread post with the template data
+    const threadData: ThreadInsert = {
+      body: message || `Shared a workout: ${templateToShare.name}`,
+      user_id: user.id,
+      thread_type: 'primary',
+      shared_template: {
+        name: templateToShare.name,
+        type: templateToShare.type,
+        sections: templateToShare.template.sections
+      } as unknown as Json
+    }
+
+    const { error: threadError } = await supabase
+      .from('threads')
+      .insert(threadData)
+
+    if (threadError) throw threadError
+
+    toast({
+      title: "Success",
+      description: "Workout shared successfully"
+    })
+  }
+
   if (loading) {
     return <div className="p-6">Loading...</div>
   }
@@ -297,6 +436,7 @@ export default function SavedWorkouts() {
                   handleCardClick={handleCardClick}
                   handleStartWorkout={handleStartWorkout}
                   handleScheduleWorkout={handleScheduleWorkout}
+                  handleShare={setTemplateToShare}
                   expandedTemplateId={expandedTemplateId}
                 />
               ))}
@@ -338,8 +478,14 @@ export default function SavedWorkouts() {
                 <TableBody>
                   {paginatedTemplates.map((template) => {
                     const workoutType = workoutTypes.find(t => t.id === template.type)
-                    const exerciseCount = template.template.sections.reduce(
-                      (acc, section) => acc + section.exercises.length, 
+                    
+                    if (!template.template || !isTemplateStructure(template.template)) {
+                      return null
+                    }
+
+                    const templateData = template.template as unknown as TemplateStructure
+                    const exerciseCount = templateData.sections.reduce(
+                      (acc: number, section: TemplateSection) => acc + section.exercises.length, 
                       0
                     )
                     
@@ -389,6 +535,14 @@ export default function SavedWorkouts() {
                               >
                                 <Calendar className="h-4 w-4" />
                               </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); setTemplateToShare(template) }}
+                                title="Share Workout"
+                              >
+                                <Share2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -396,11 +550,11 @@ export default function SavedWorkouts() {
                           <TableRow>
                             <TableCell colSpan={6} className="bg-muted/50">
                               <div className="py-4 space-y-4">
-                                {template.template.sections.map((section, sectionIndex) => (
+                                {templateData.sections.map((section: TemplateSection, sectionIndex: number) => (
                                   <div key={`${template.id}-section-${sectionIndex}`} className="space-y-2">
                                     <h3 className="font-bold text-lg">{section.name}</h3>
                                     <div className="grid gap-2">
-                                      {section.exercises.map((exercise, exerciseIndex) => (
+                                      {section.exercises.map((exercise, exerciseIndex: number) => (
                                         <div 
                                           key={`${template.id}-section-${sectionIndex}-exercise-${exerciseIndex}`}
                                           className="flex justify-between items-center text-sm"
@@ -480,6 +634,15 @@ export default function SavedWorkouts() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <ShareWorkoutModal
+        open={!!templateToShare}
+        onOpenChange={(open) => {
+          if (!open) setTemplateToShare(null)
+        }}
+        template={templateToShare}
+        onShare={handleShareWorkout}
+      />
     </div>
   )
 }

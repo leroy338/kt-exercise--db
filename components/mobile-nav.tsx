@@ -68,19 +68,22 @@ export function MobileNav() {
     <div className="block lg:hidden">
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogTrigger asChild>
-          <div className="fixed bottom-4 right-4 z-50">
-            <div className="backdrop-blur-md bg-background/60 border-2 border-cyan-400/50 rounded-full p-2 shadow-lg">
+          <div className="fixed top-[3.5rem] left-4 z-[100] p-4">
+            <div className="backdrop-blur-md bg-background/60 rounded-full p-2 shadow-lg">
               <Button 
                 variant="ghost" 
                 size="icon"
-                className="h-10 w-10 rounded-full"
+                className="h-10 w-10 rounded-full text-blue-400 hover:text-blue-500 hover:bg-blue-400/10"
               >
                 <Menu className="h-5 w-5" />
               </Button>
             </div>
           </div>
         </DialogTrigger>
-        <DialogContent className="w-72 p-4 rounded-xl border-2 border-cyan-400/50 backdrop-blur-xl bg-background/60 relative">
+        <DialogContent 
+          className="!fixed !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 w-[calc(100%-2rem)] max-w-[20rem] p-4 rounded-xl border-2 border-cyan-400/50 backdrop-blur-xl bg-background/60 z-[100]"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogTitle className="text-center text-base font-medium mb-3">
             Menu
           </DialogTitle>

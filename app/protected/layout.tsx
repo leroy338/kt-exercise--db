@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { MobileNav } from "@/components/mobile-nav"
 
 export default function ProtectedLayout({
   children,
@@ -16,24 +17,7 @@ export default function ProtectedLayout({
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden">
-      <HeaderAuth>
-        {/* Mobile Menu Button */}
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon"
-              className="lg:hidden"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64">
-            <Sidebar onNavigate={() => setIsOpen(false)} />
-          </SheetContent>
-        </Sheet>
-      </HeaderAuth>
+      <HeaderAuth />
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
@@ -46,6 +30,9 @@ export default function ProtectedLayout({
           {children}
         </div>
       </main>
+
+      {/* Mobile Navigation */}
+      <MobileNav />
     </div>
   )
 } 

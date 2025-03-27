@@ -8,7 +8,7 @@ import { TemplateSelectorModal, Template } from "@/components/template-selector-
 import { createClient } from "@/utils/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
 import { format, addDays, startOfWeek } from "date-fns"
-import { Plus, ChevronRight, Trash2 } from "lucide-react"
+import { Plus, ChevronRight, Trash2, Share2 } from "lucide-react"
 import { workoutTypes } from "@/app/config/workout-types"
 import {
   Dialog,
@@ -27,6 +27,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { getUserTimezone, convertToUTC, convertToUserTimezone } from "@/utils/date"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 interface ScheduledWorkout {
   id: string
@@ -46,10 +49,89 @@ interface ScheduledWorkout {
           sets: number
           reps: number
           rest: number
+          order: number
         }[]
       }[]
     }
   } | null
+}
+
+interface ShareWorkoutModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workout: ScheduledWorkout | null
+  onShare: (message: string) => Promise<void>
+}
+
+function ShareWorkoutModal({ open, onOpenChange, workout, onShare }: ShareWorkoutModalProps) {
+  const [message, setMessage] = useState("")
+  const [isSharing, setIsSharing] = useState(false)
+  const { toast } = useToast()
+
+  const handleShare = async () => {
+    try {
+      setIsSharing(true)
+      await onShare(message)
+      onOpenChange(false)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to share workout",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
+  if (!workout?.template) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Share Workout</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="message">Message</Label>
+            <Input
+              id="message"
+              placeholder="Add a message about this workout..."
+              value={message}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMessage(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Workout Preview</Label>
+            <div className="space-y-4">
+              {workout.template.template.sections.map((section, idx) => (
+                <div key={idx}>
+                  <h3 className="font-medium mb-2">{section.name}</h3>
+                  <div className="space-y-2">
+                    {section.exercises
+                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                      .map((exercise, exerciseIdx) => (
+                        <div key={exerciseIdx} className="text-sm">
+                          {exercise.order ?? exerciseIdx + 1}. {exercise.name} - {exercise.sets}×{exercise.reps}
+                        </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <Button 
+            className="w-full" 
+            onClick={handleShare}
+            disabled={isSharing}
+          >
+            {isSharing ? "Sharing..." : "Share Workout"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 export default function Planner() {
@@ -58,10 +140,12 @@ export default function Planner() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [scheduledWorkouts, setScheduledWorkouts] = useState<ScheduledWorkout[]>([])
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+  const [userTimezone, setUserTimezone] = useState<string>("")
   const supabase = createClient()
   const { toast } = useToast()
   const [workoutToDelete, setWorkoutToDelete] = useState<string | null>(null)
   const [isAddingWorkout, setIsAddingWorkout] = useState(false)
+  const [workoutToShare, setWorkoutToShare] = useState<ScheduledWorkout | null>(null)
 
   // Calculate dates once at component level
   const today = new Date()
@@ -80,14 +164,35 @@ export default function Planner() {
     dayName: format(new Date(date), 'EEEE')
   })))
 
+  useEffect(() => {
+    async function initializeTimezone() {
+      const timezone = await getUserTimezone()
+      setUserTimezone(timezone)
+    }
+    initializeTimezone()
+  }, [])
+
   const fetchScheduledWorkouts = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Log the date range we're querying
+    // Get user's timezone
+    const timezone = await getUserTimezone()
+
+    // Calculate week boundaries in user's timezone
+    const startDate = new Date(`${weekDays[0]}T00:00:00`)
+    const endDate = new Date(`${weekDays[6]}T23:59:59`)
+    
+    // Convert to UTC for database query
+    const utcStartDate = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000)
+    const utcEndDate = new Date(endDate.getTime() - endDate.getTimezoneOffset() * 60000)
+
     console.log('Querying date range:', {
-      start: `${weekDays[0]}T00:00:00`,
-      end: `${weekDays[6]}T23:59:59`
+      start: utcStartDate.toISOString(),
+      end: utcEndDate.toISOString(),
+      timezone,
+      localStart: startDate.toISOString(),
+      localEnd: endDate.toISOString()
     })
 
     const { data, error } = await supabase
@@ -103,8 +208,8 @@ export default function Planner() {
         )
       `)
       .eq('user_id', user.id)
-      .gte('scheduled_for', `${weekDays[0]}T00:00:00`)
-      .lte('scheduled_for', `${weekDays[6]}T23:59:59`)
+      .gte('scheduled_for', utcStartDate.toISOString())
+      .lte('scheduled_for', utcEndDate.toISOString())
       .not('template', 'is', null)
       .order('scheduled_for')
 
@@ -113,15 +218,24 @@ export default function Planner() {
       return
     }
 
-    // Log the raw data from the database
-    console.log('Raw workout data:', data?.map(w => ({
+    // Convert UTC dates to user's timezone for display
+    const workoutsInUserTimezone = data?.map(workout => {
+      const utcDate = new Date(workout.scheduled_for)
+      const localDate = new Date(utcDate.getTime() + utcDate.getTimezoneOffset() * 60000)
+      
+      return {
+        ...workout,
+        scheduled_for: localDate.toISOString()
+      }
+    })
+
+    console.log('Processed workouts:', workoutsInUserTimezone?.map(w => ({
       id: w.id,
       scheduled_for: w.scheduled_for,
-      formatted_date: format(new Date(w.scheduled_for), 'yyyy-MM-dd'),
-      template_name: w.template && 'name' in w.template ? w.template.name : 'No template'
+      formatted_date: format(new Date(w.scheduled_for), 'yyyy-MM-dd')
     })))
 
-    setScheduledWorkouts(data as unknown as ScheduledWorkout[])
+    setScheduledWorkouts(workoutsInUserTimezone as unknown as ScheduledWorkout[])
   }
 
   useEffect(() => {
@@ -154,14 +268,27 @@ export default function Planner() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No authenticated user')
 
-      // Use exact date without adjustment
-      const scheduledFor = `${date}T00:00:00`
-      console.log('Scheduling workout for:', scheduledFor)
+      // Get user's timezone
+      const userTimezone = await getUserTimezone()
+      
+      // Create a date object for the selected day at midnight in the user's timezone
+      const localDate = new Date(`${date}T00:00:00`)
+      
+      // Convert to UTC while preserving the date
+      const utcDate = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000)
+      
+      console.log('Scheduling workout:', {
+        selectedDate: date,
+        localDate: localDate.toISOString(),
+        userTimezone,
+        utcDate: utcDate.toISOString(),
+        timezoneOffset: localDate.getTimezoneOffset()
+      })
 
       const insertData: Database['public']['Tables']['scheduled_workouts']['Insert'] = {
         user_id: user.id,
         template_id: template.id,
-        scheduled_for: scheduledFor,
+        scheduled_for: utcDate.toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
@@ -218,6 +345,56 @@ export default function Planner() {
     setWorkoutToDelete(null)
   }
 
+  const handleShareWorkout = async (message: string) => {
+    if (!workoutToShare?.template) return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('No authenticated user')
+
+    // Start a transaction
+    const { data: publicTemplate, error: publicError } = await supabase
+      .from('public_templates')
+      .insert({
+        template: workoutToShare.template.template,
+        name: workoutToShare.template.name,
+        type: workoutToShare.template.type,
+        user_id: user.id
+      })
+      .select()
+      .single()
+
+    if (publicError) throw publicError
+
+    // Update the original template to mark it as shared
+    const { error: updateError } = await supabase
+      .from('templates')
+      .update({ shared: true })
+      .eq('id', workoutToShare.template.id)
+
+    if (updateError) throw updateError
+
+    // Create a thread post
+    const { error: threadError } = await supabase
+      .from('threads')
+      .insert({
+        body: message || `Shared a workout: ${workoutToShare.template.name}`,
+        user_id: user.id,
+        thread_type: 'primary',
+        shared_template: {
+          workout_name: workoutToShare.template.name,
+          workout_type: workoutToShare.template.type,
+          sections: workoutToShare.template.template.sections
+        }
+      })
+
+    if (threadError) throw threadError
+
+    toast({
+      title: "Success",
+      description: "Workout shared successfully"
+    })
+  }
+
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6">
       <h2 className="text-2xl font-semibold mb-8">Weekly Planner</h2>
@@ -225,14 +402,18 @@ export default function Planner() {
       <div className="space-y-6">
         {weekDays.map((date) => {
           const dayWorkouts = scheduledWorkouts.filter(workout => {
+            // Convert both dates to the same format for comparison
             const workoutDate = format(new Date(workout.scheduled_for), 'yyyy-MM-dd')
+            const cardDate = date
+            
             console.log('Date comparison:', {
-              cardDate: date,
+              cardDate,
               workoutDate,
               originalScheduledFor: workout.scheduled_for,
-              matches: workoutDate === date
+              matches: workoutDate === cardDate
             })
-            return workoutDate === date
+            
+            return workoutDate === cardDate
           })
 
           return (
@@ -283,17 +464,30 @@ export default function Planner() {
                           </span>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setWorkoutToDelete(workout.id)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setWorkoutToShare(workout)
+                          }}
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setWorkoutToDelete(workout.id)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -336,10 +530,12 @@ export default function Planner() {
                 <div key={idx}>
                   <h3 className="font-medium mb-2">{section.name}</h3>
                   <div className="space-y-2">
-                    {section.exercises.map((exercise, exerciseIdx) => (
-                      <div key={exerciseIdx} className="text-sm">
-                        {exercise.name} - {exercise.sets}×{exercise.reps}
-                      </div>
+                    {section.exercises
+                      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                      .map((exercise, exerciseIdx) => (
+                        <div key={exerciseIdx} className="text-sm">
+                          {exercise.order ?? exerciseIdx + 1}. {exercise.name} - {exercise.sets}×{exercise.reps}
+                        </div>
                     ))}
                   </div>
                 </div>
@@ -368,6 +564,15 @@ export default function Planner() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ShareWorkoutModal
+        open={!!workoutToShare}
+        onOpenChange={(open) => {
+          if (!open) setWorkoutToShare(null)
+        }}
+        workout={workoutToShare}
+        onShare={handleShareWorkout}
+      />
     </div>
   )
 }

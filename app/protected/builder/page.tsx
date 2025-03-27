@@ -46,6 +46,7 @@ interface Exercise {
   type: string
   section?: number
   section_name?: string
+  order?: number
 }
 
 interface WorkoutItem {
@@ -98,6 +99,7 @@ interface WorkoutTemplate {
         reps: number
         rest: number
         muscleGroups: string[]
+        order: number
       }[]
     }[]
   }
@@ -447,7 +449,7 @@ export default function BuilderPage() {
     }
   }
 
-  const handleTemplateSelect = async (template: WorkoutTemplate) => {
+  const handleTemplateSelect = async (template: Template | WorkoutTemplate) => {
     try {
       const items: WorkoutItem[] = []
       
@@ -458,7 +460,7 @@ export default function BuilderPage() {
           title: section.name
         })
         
-        section.exercises.forEach((exercise) => {
+        section.exercises.forEach((exercise, index) => {
           items.push({
             type: 'exercise',
             data: {
@@ -467,7 +469,8 @@ export default function BuilderPage() {
               reps: exercise.reps,
               rest: exercise.rest,
               muscleGroups: [],
-              type: template.type
+              type: template.type,
+              order: 'order' in exercise ? exercise.order : index
             }
           })
         })
@@ -507,9 +510,9 @@ export default function BuilderPage() {
     setIsTemplateModalOpen(false)
   }
 
-  const handleShare = async (template: WorkoutTemplate) => {
+  const handleShare = async (template: Template | WorkoutTemplate) => {
     setIsSharing(true)
-    setSharingTemplate(template)
+    setSharingTemplate(template as WorkoutTemplate)
     
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -877,11 +880,11 @@ export default function BuilderPage() {
           <TemplateSelectorModal
             open={isTemplateModalOpen}
             onOpenChange={setIsTemplateModalOpen}
-            templates={templates}
-            recentTemplates={recentTemplates}
+            templates={templates as unknown as Template[]}
+            recentTemplates={recentTemplates as unknown as Template[]}
             onSelect={handleTemplateSelect}
             onShare={handleShare}
-            sharingTemplate={sharingTemplate}
+            sharingTemplate={sharingTemplate as unknown as Template}
             isSharing={isSharing}
           />
         </TabsContent>

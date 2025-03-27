@@ -34,9 +34,11 @@ import { Input } from "@/components/ui/input"
 
 export interface Template {
   id: number
-  user_id: string
   name: string
   type: string
+  user_id: string
+  is_public: boolean
+  created_at: string
   template: {
     sections: {
       name: string
@@ -46,12 +48,11 @@ export interface Template {
         reps: number
         rest: number
         muscleGroups: string[]
+        order?: number
       }[]
     }[]
   }
   folder?: string
-  is_public: boolean
-  created_at: string
   startTime?: string
 }
 
