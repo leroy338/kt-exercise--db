@@ -21,30 +21,29 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Exercise as BaseExercise } from "@/app/config/exercises"
 
-interface Exercise {
-  name: string
+type WorkoutExercise = BaseExercise & {
   sets: number
   reps: number
   rest: number
-  muscleGroups: string[]
-  type: string
-  equipment?: string[]
+  duration?: number
 }
 
 interface ExerciseSelectorModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onExerciseSelect: (exercise: Exercise) => void
-  workoutType?: string
-  editingExercise?: Exercise | null
+  onExerciseSelect: (exercise: WorkoutExercise) => void
+  workoutType: string
+  editingExercise?: WorkoutExercise
 }
 
 export function ExerciseSelectorModal({
   open,
   onOpenChange,
   onExerciseSelect,
-  workoutType
+  workoutType,
+  editingExercise
 }: ExerciseSelectorModalProps) {
   const [step, setStep] = useState<"exercises" | "details">("exercises")
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string>()
@@ -52,8 +51,12 @@ export function ExerciseSelectorModal({
   const [sets, setSets] = useState("3")
   const [reps, setReps] = useState("10")
   const [rest, setRest] = useState("60")
+  const [duration, setDuration] = useState("30")
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState<"muscle" | "type">("muscle")
+
+  const workoutTypeConfig = workoutTypes.find(t => t.id === workoutType)
+  const isCircuit = workoutTypeConfig?.builder === 'circuit'
 
   const filteredExercises = exercises.filter(exercise => {
     const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -81,37 +84,57 @@ export function ExerciseSelectorModal({
 
   useEffect(() => {
     if (open) {
-      setStep("exercises")
-      setSelectedMuscleGroup(undefined)
-      setSelectedExercise(null)
-      setSets("3")
-      setReps("10")
-      setRest("60")
-      setSearchQuery("")
-      setFilterType("muscle")
+      if (editingExercise) {
+        setSelectedExercise(editingExercise)
+        setStep("details")
+        if (isCircuit) {
+          setDuration(editingExercise.duration?.toString() || "30")
+          setRest(editingExercise.rest.toString())
+        } else {
+          setSets(editingExercise.sets.toString())
+          setReps(editingExercise.reps.toString())
+          setRest(editingExercise.rest.toString())
+        }
+      } else {
+        setStep("exercises")
+        setSelectedMuscleGroup(undefined)
+        setSelectedExercise(null)
+        setSets("3")
+        setReps("10")
+        setRest("60")
+        setDuration("30")
+        setSearchQuery("")
+        setFilterType("muscle")
+      }
     }
-  }, [open])
+  }, [open, editingExercise, isCircuit])
 
   const handleExerciseSelect = (exercise: typeof exercises[0]) => {
     setSelectedExercise(exercise)
-    setSets(exercise.defaultSets.toString())
-    setReps(exercise.defaultReps.toString())
-    setRest(exercise.defaultRest.toString())
+    if (isCircuit) {
+      setDuration(exercise.defaultDuration?.toString() || "30")
+      setRest(exercise.defaultRest?.toString() || "15")
+    } else {
+      setSets(exercise.defaultSets?.toString() || "3")
+      setReps(exercise.defaultReps?.toString() || "10")
+      setRest(exercise.defaultRest?.toString() || "60")
+    }
     setStep("details")
   }
 
   const handleSubmit = () => {
     if (!selectedExercise) return
     
-    onExerciseSelect({
+    const workoutExercise: WorkoutExercise = {
       ...selectedExercise,
-      type: workoutType || "strength",
+      type: workoutType,
       sets: parseInt(sets),
       reps: parseInt(reps),
-      rest: parseInt(rest)
-    })
+      rest: parseInt(rest),
+      ...(isCircuit ? { duration: parseInt(duration) } : {})
+    }
     
-    // Reset and close only after submission
+    onExerciseSelect(workoutExercise)
     onOpenChange(false)
     resetForm()
   }
@@ -123,6 +146,7 @@ export function ExerciseSelectorModal({
     setSets("3")
     setReps("10")
     setRest("60")
+    setDuration("30")
   }
 
   const handleClose = () => {
@@ -193,34 +217,61 @@ export function ExerciseSelectorModal({
               <>
                 <div className="font-medium text-lg">{selectedExercise.name}</div>
                 <div className="grid grid-cols-2 gap-4">
+                  {isCircuit ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="duration">Work Duration (seconds)</Label>
+                        <Input
+                          id="duration"
+                          type="number"
+                          value={duration}
+                          onChange={(e) => setDuration(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rest">Rest (seconds)</Label>
+                        <Input
+                          id="rest"
+                          type="number"
+                          value={rest}
+                          onChange={(e) => setRest(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="sets">Sets</Label>
+                        <Input
+                          id="sets"
+                          type="number"
+                          value={sets}
+                          onChange={(e) => setSets(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="reps">Reps</Label>
+                        <Input
+                          id="reps"
+                          type="number"
+                          value={reps}
+                          onChange={(e) => setReps(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                {!isCircuit && (
                   <div className="space-y-2">
-                    <Label htmlFor="sets">Sets</Label>
+                    <Label htmlFor="rest">Rest (seconds)</Label>
                     <Input
-                      id="sets"
+                      id="rest"
                       type="number"
-                      value={sets}
-                      onChange={(e) => setSets(e.target.value)}
+                      value={rest}
+                      onChange={(e) => setRest(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reps">Reps</Label>
-                    <Input
-                      id="reps"
-                      type="number"
-                      value={reps}
-                      onChange={(e) => setReps(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="rest">Rest (seconds)</Label>
-                  <Input
-                    id="rest"
-                    type="number"
-                    value={rest}
-                    onChange={(e) => setRest(e.target.value)}
-                  />
-                </div>
+                )}
                 <Button 
                   className="w-full" 
                   onClick={handleSubmit}

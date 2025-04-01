@@ -36,14 +36,13 @@ import {
 import { TemplateSelectorModal, Template } from "@/components/template-selector-modal"
 import { PlanBuilder } from "@/components/plan-builder"
 import { saveTemplate } from "@/app/actions/save-template"
+import { Exercise as BaseExercise, exercises } from "@/app/config/exercises"
 
-interface Exercise {
-  name: string
+type WorkoutExercise = BaseExercise & {
   sets: number
   reps: number
   rest: number
-  muscleGroups: string[]
-  type: string
+  duration?: number
   section?: number
   section_name?: string
   order?: number
@@ -51,7 +50,7 @@ interface Exercise {
 
 interface WorkoutItem {
   type: 'exercise' | 'section'
-  data: Exercise | null
+  data: WorkoutExercise | null
   title?: string
 }
 
@@ -176,13 +175,14 @@ export default function BuilderPage() {
   const [pendingFolder, setPendingFolder] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("builder")
   const [selectedSectionType, setSelectedSectionType] = useState<string>()
+  const [selectedBuilderType, setSelectedBuilderType] = useState<'sets' | 'time' | 'circuit'>('sets')
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
     return sections.length + 1
   }
 
-  const handleExerciseSelect = (exercise: Exercise) => {
+  const handleExerciseSelect = (exercise: WorkoutExercise) => {
     if (!workoutType) setWorkoutType(exercise.type)
     
     if (editingExerciseIndex !== null) {
@@ -461,18 +461,20 @@ export default function BuilderPage() {
         })
         
         section.exercises.forEach((exercise, index) => {
-          items.push({
-            type: 'exercise',
-            data: {
-              name: exercise.name,
-              sets: exercise.sets,
-              reps: exercise.reps,
-              rest: exercise.rest,
-              muscleGroups: [],
-              type: template.type,
-              order: 'order' in exercise ? exercise.order : index
-            }
-          })
+          const baseExercise = exercises.find((e: BaseExercise) => e.name === exercise.name)
+          if (baseExercise) {
+            items.push({
+              type: 'exercise',
+              data: {
+                ...baseExercise,
+                sets: exercise.sets,
+                reps: exercise.reps,
+                rest: exercise.rest,
+                type: template.type,
+                order: 'order' in exercise ? exercise.order : index
+              }
+            })
+          }
         })
       })
 
@@ -590,6 +592,15 @@ export default function BuilderPage() {
     templates: templates.filter(t => t.folder === folder)
   }))
 
+  // Update the workout type selection to set the builder type
+  const handleWorkoutTypeSelect = (type: string) => {
+    setWorkoutType(type)
+    const workoutType = workoutTypes.find(t => t.id === type)
+    if (workoutType) {
+      setSelectedBuilderType(workoutType.builder)
+    }
+  }
+
   return (
     <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
       <h2 className="text-2xl font-semibold">Builder</h2>
@@ -689,65 +700,163 @@ export default function BuilderPage() {
 
               {workoutItems.length > 0 ? (
                 <div className="space-y-4">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Exercise</TableHead>
-                        <TableHead>Sets</TableHead>
-                        <TableHead>Reps</TableHead>
-                        <TableHead>Rest</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  {selectedBuilderType === 'sets' ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Exercise</TableHead>
+                          <TableHead>Sets</TableHead>
+                          <TableHead>Reps</TableHead>
+                          <TableHead>Rest</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {workoutItems.map((item, index) => (
+                          item.type === 'section' ? (
+                            <TableRow key={`section-${index}`}>
+                              <TableCell colSpan={5}>
+                                <div className="flex items-center gap-4">
+                                  <Input 
+                                    placeholder="Section title"
+                                    className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
+                                    value={item.title || ''}
+                                    onChange={(e) => handleSectionTitleChange(index, e.target.value)}
+                                  />
+                                  <Select value={selectedSectionType} onValueChange={handleWorkoutTypeSelect}>
+                                    <SelectTrigger className="w-[140px]">
+                                      <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {workoutTypes.map((type) => (
+                                        <SelectItem key={type.id} value={type.id}>
+                                          {type.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            <TableRow 
+                              key={`${item.data?.name}-${index}`}
+                              className={cn(
+                                "cursor-pointer hover:bg-muted/50",
+                                editingExerciseIndex === index && "bg-muted/50"
+                              )}
+                              onClick={() => handleRowClick(index)}
+                            >
+                              <TableCell>{item.data?.name}</TableCell>
+                              <TableCell>{item.data?.sets}</TableCell>
+                              <TableCell>{item.data?.reps}</TableCell>
+                              <TableCell>{item.data?.rest}s</TableCell>
+                              <TableCell>
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleRowClick(index)
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleRemoveExercise(index)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="space-y-4">
                       {workoutItems.map((item, index) => (
                         item.type === 'section' ? (
-                          <TableRow key={`section-${index}`}>
-                            <TableCell colSpan={5}>
-                              <div className="flex items-center gap-4">
-                                <Input 
-                                  placeholder="Section title"
-                                  className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
-                                  value={item.title || ''}
-                                  onChange={(e) => handleSectionTitleChange(index, e.target.value)}
-                                />
-                                <Select value={selectedSectionType} onValueChange={setSelectedSectionType}>
-                                  <SelectTrigger className="w-[140px]">
-                                    <SelectValue placeholder="Select type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {workoutTypes.map((type) => (
-                                      <SelectItem key={type.id} value={type.id}>
-                                        {type.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <div key={`section-${index}`} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+                            <Input 
+                              placeholder="Section title"
+                              className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
+                              value={item.title || ''}
+                              onChange={(e) => handleSectionTitleChange(index, e.target.value)}
+                            />
+                            <Select value={selectedSectionType} onValueChange={handleWorkoutTypeSelect}>
+                              <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {workoutTypes.map((type) => (
+                                  <SelectItem key={type.id} value={type.id}>
+                                    {type.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         ) : (
-                          <TableRow 
-                            key={`${item.data?.name}-${index}`}
-                            className={cn(
-                              "cursor-pointer hover:bg-muted/50",
-                              editingExerciseIndex === index && "bg-muted/50"
-                            )}
-                            onClick={() => handleRowClick(index)}
-                          >
-                            <TableCell>{item.data?.name}</TableCell>
-                            <TableCell>{item.data?.sets}</TableCell>
-                            <TableCell>{item.data?.reps}</TableCell>
-                            <TableCell>{item.data?.rest}s</TableCell>
-                            <TableCell>
-                              <div className="flex justify-end gap-2">
+                          <Card key={`${item.data?.name}-${index}`} className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="space-y-2">
+                                <h4 className="font-medium">{item.data?.name}</h4>
+                                <div className="flex items-center gap-4">
+                                  <div className="space-y-1">
+                                    <Label>Duration (seconds)</Label>
+                                    <Input
+                                      type="number"
+                                      value={item.data?.duration || 30}
+                                      onChange={(e) => {
+                                        const newDuration = parseInt(e.target.value)
+                                        if (!isNaN(newDuration)) {
+                                          setWorkoutItems(prev => prev.map((item, i) => 
+                                            i === index ? {
+                                              ...item,
+                                              data: item.data ? { ...item.data, duration: newDuration } : null
+                                            } : item
+                                          ))
+                                        }
+                                      }}
+                                      className="w-24"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label>Rest (seconds)</Label>
+                                    <Input
+                                      type="number"
+                                      value={item.data?.rest || 15}
+                                      onChange={(e) => {
+                                        const newRest = parseInt(e.target.value)
+                                        if (!isNaN(newRest)) {
+                                          setWorkoutItems(prev => prev.map((item, i) => 
+                                            i === index ? {
+                                              ...item,
+                                              data: item.data ? { ...item.data, rest: newRest } : null
+                                            } : item
+                                          ))
+                                        }
+                                      }}
+                                      className="w-24"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleRowClick(index)
-                                  }}
+                                  onClick={() => handleRowClick(index)}
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -755,20 +864,17 @@ export default function BuilderPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleRemoveExercise(index)
-                                  }}
+                                  onClick={() => handleRemoveExercise(index)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
-                            </TableCell>
-                          </TableRow>
+                            </div>
+                          </Card>
                         )
                       ))}
-                    </TableBody>
-                  </Table>
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <Button 
@@ -806,7 +912,7 @@ export default function BuilderPage() {
                 }}
                 onExerciseSelect={handleExerciseSelect}
                 workoutType={workoutType}
-                editingExercise={editingExerciseIndex !== null ? workoutItems[editingExerciseIndex].data : undefined}
+                editingExercise={editingExerciseIndex !== null ? workoutItems[editingExerciseIndex].data || undefined : undefined}
               />
             </div>
           </Card>

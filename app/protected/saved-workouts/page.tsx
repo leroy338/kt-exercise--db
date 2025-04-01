@@ -5,7 +5,7 @@ import { createClient } from "@/utils/supabase/client"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Play, Calendar, Folder, Share2 } from "lucide-react"
+import { Play, Calendar, Folder, Share2, Pencil } from "lucide-react"
 import { muscleGroups } from "@/app/config/muscle-groups"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
@@ -51,6 +51,13 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import type { Database } from "@/types/database.types"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { EditTemplateModal } from "@/components/edit-template-modal"
 
 type Template = Database['public']['Tables']['templates']['Row']
 type ThreadInsert = Database['public']['Tables']['threads']['Insert']
@@ -157,12 +164,13 @@ function ShareWorkoutModal({ open, onOpenChange, template, onShare }: ShareWorko
   )
 }
 
-const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleScheduleWorkout, handleShare, expandedTemplateId }: {
+const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleScheduleWorkout, handleShare, handleEdit, expandedTemplateId }: {
   template: Template
   handleCardClick: (id: number, e: React.MouseEvent) => void
   handleStartWorkout: (id: number) => void
   handleScheduleWorkout: (id: number) => void
   handleShare: (template: Template) => void
+  handleEdit: (template: Template) => void
   expandedTemplateId: number | null
 }) => {
   const workoutType = workoutTypes.find(t => t.id === template.type)
@@ -179,7 +187,7 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
       className="p-4 hover:bg-muted/50 transition-colors cursor-pointer"
       onClick={(e) => handleCardClick(template.id, e)}
     >
-      <div className="space-y-4">
+      <div className="space-y-2">
         {/* Header */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -244,33 +252,42 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
         )}
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-2 border-t">
+        <div className="flex flex-wrap items-center justify-end gap-1 pt-2 border-t mt-2">
           <Button 
             variant="ghost" 
-            size="sm"
+            size="icon"
             onClick={(e) => { e.stopPropagation(); handleStartWorkout(template.id) }}
+            className="h-8 w-8"
             title="Start Workout"
           >
-            <Play className="h-4 w-4 mr-2" />
-            Start
+            <Play className="h-4 w-4" />
           </Button>
           <Button 
             variant="ghost" 
-            size="sm"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); handleEdit(template) }}
+            className="h-8 w-8"
+            title="Edit Workout"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
             onClick={(e) => { e.stopPropagation(); handleScheduleWorkout(template.id) }}
+            className="h-8 w-8"
             title="Schedule Workout"
           >
-            <Calendar className="h-4 w-4 mr-2" />
-            Schedule
+            <Calendar className="h-4 w-4" />
           </Button>
           <Button 
             variant="ghost" 
-            size="sm"
+            size="icon"
             onClick={(e) => { e.stopPropagation(); handleShare(template) }}
+            className="h-8 w-8"
             title="Share Workout"
           >
-            <Share2 className="h-4 w-4 mr-2" />
-            Share
+            <Share2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -280,9 +297,11 @@ const WorkoutCard = ({ template, handleCardClick, handleStartWorkout, handleSche
 
 export default function SavedWorkouts() {
   const [templates, setTemplates] = useState<Template[]>([])
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const [expandedTemplateId, setExpandedTemplateId] = useState<number | null>(null)
   const [folders, setFolders] = useState<string[]>([])
+  const [templateToEdit, setTemplateToEdit] = useState<Template | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -292,40 +311,40 @@ export default function SavedWorkouts() {
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null)
   const [templateToShare, setTemplateToShare] = useState<Template | null>(null)
 
-  useEffect(() => {
-    async function fetchTemplates() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast({
-            title: "Not authenticated",
-            description: "Please sign in to view your workouts",
-            variant: "destructive"
-          })
-          router.push('/sign-in')
-          return
-        }
-
-        const { data: templatesData, error } = await supabase
-          .from('templates')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-
-        if (error) throw error
-        setTemplates(templatesData)
-      } catch (error) {
-        console.error('Error fetching templates:', error)
+  const fetchTemplates = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
         toast({
-          title: "Error",
-          description: "Failed to load templates",
+          title: "Not authenticated",
+          description: "Please sign in to view your workouts",
           variant: "destructive"
         })
-      } finally {
-        setLoading(false)
+        router.push('/sign-in')
+        return
       }
-    }
 
+      const { data: templatesData, error } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setTemplates(templatesData || [])
+    } catch (error) {
+      console.error('Error fetching templates:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load templates",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
     fetchTemplates()
   }, [router, supabase, toast])
 
@@ -407,7 +426,16 @@ export default function SavedWorkouts() {
     })
   }
 
-  if (loading) {
+  const handleEdit = (template: Template) => {
+    setTemplateToEdit(template)
+    setIsEditModalOpen(true)
+  }
+
+  const handleSave = () => {
+    fetchTemplates()
+  }
+
+  if (isLoading) {
     return <div className="p-6">Loading...</div>
   }
 
@@ -437,6 +465,7 @@ export default function SavedWorkouts() {
                   handleStartWorkout={handleStartWorkout}
                   handleScheduleWorkout={handleScheduleWorkout}
                   handleShare={setTemplateToShare}
+                  handleEdit={handleEdit}
                   expandedTemplateId={expandedTemplateId}
                 />
               ))}
@@ -526,6 +555,14 @@ export default function SavedWorkouts() {
                                 title="Start Workout"
                               >
                                 <Play className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); handleEdit(template) }}
+                                title="Edit Workout"
+                              >
+                                <Pencil className="h-4 w-4" />
                               </Button>
                               <Button 
                                 variant="ghost" 
@@ -642,6 +679,13 @@ export default function SavedWorkouts() {
         }}
         template={templateToShare}
         onShare={handleShareWorkout}
+      />
+
+      <EditTemplateModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        template={templateToEdit}
+        onSave={handleSave}
       />
     </div>
   )

@@ -7,7 +7,8 @@ export const exercises = [
     muscleGroups: ["chest", "triceps", "shoulders"],
     defaultSets: 3,
     defaultReps: 10,
-    defaultRest: 90
+    defaultRest: 90,
+    defaultDuration: 30
   },
   {
     name: "Squat",
@@ -15,6 +16,15 @@ export const exercises = [
     muscleGroups: ["legs", "core"],
     defaultSets: 3,
     defaultReps: 8,
+    defaultRest: 120,
+    defaultDuration: 30
+  },
+  {
+    name: "Air Bike",
+    type: "muscle-group",
+    muscleGroups: ["legs", "core"],
+    defaultSets: 3,
+    defaultReps: 60,
     defaultRest: 120
   },
   {
@@ -1023,7 +1033,8 @@ export const exercises = [
     muscleGroups: ["forearms"],
     defaultSets: 3,
     defaultReps: 1,
-    defaultRest: 90
+    defaultRest: 90,
+    defaultDuration: 30
   }
 ]
 

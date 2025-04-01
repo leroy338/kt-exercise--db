@@ -1,15 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { createClient } from "@/utils/supabase/client"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { toast } from "@/components/ui/use-toast"
 import { Progress } from "@/components/ui/progress"
 import { Tables } from "@/types/database.types"
+import { Badge } from "@/components/ui/badge"
 
 type WorkoutLog = Tables<'workout_logs'>
 
@@ -24,11 +25,13 @@ interface Exercise {
     reps_completed: number
     weight: number
   }[]
+  duration?: number // For circuit workouts
 }
 
 interface Section {
   name: string
   exercises: Exercise[]
+  type?: string // Add section type
 }
 
 interface Template {
@@ -38,6 +41,358 @@ interface Template {
   template: {
     sections: Section[]
   }
+}
+
+function CircuitPlayer({ 
+  exercise, 
+  onComplete, 
+  onNext 
+}: { 
+  exercise: Exercise
+  onComplete: () => void
+  onNext: () => void
+}) {
+  const [timeLeft, setTimeLeft] = useState(exercise.duration || 30)
+  const [isRest, setIsRest] = useState(false)
+  const [restTimeLeft, setRestTimeLeft] = useState(exercise.rest || 15)
+  const [isActive, setIsActive] = useState(false)
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (isActive) {
+      if (isRest) {
+        timer = setInterval(() => {
+          setRestTimeLeft((prev) => {
+            if (prev <= 1) {
+              setIsRest(false)
+              setTimeLeft(exercise.duration || 30)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      } else {
+        timer = setInterval(() => {
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              setIsRest(true)
+              setRestTimeLeft(exercise.rest || 15)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      }
+    }
+    return () => clearInterval(timer)
+  }, [isActive, isRest, exercise.duration, exercise.rest])
+
+  const toggleTimer = () => {
+    setIsActive(!isActive)
+  }
+
+  const resetTimer = () => {
+    setIsActive(false)
+    setIsRest(false)
+    setTimeLeft(exercise.duration || 30)
+    setRestTimeLeft(exercise.rest || 15)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-semibold">{exercise.name}</h3>
+        <div className="text-sm text-muted-foreground">
+          {isRest ? 'Rest' : 'Work'} Time
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center space-y-4">
+        <div className="text-6xl font-bold">
+          {isRest ? restTimeLeft : timeLeft}
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {isRest ? 'Rest' : 'Work'} Period
+        </div>
+      </div>
+
+      <div className="flex justify-center gap-4">
+        <Button
+          variant="outline"
+          onClick={toggleTimer}
+          className="w-32"
+        >
+          {isActive ? 'Pause' : 'Start'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={resetTimer}
+          className="w-32"
+        >
+          Reset
+        </Button>
+      </div>
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          variant="outline"
+          onClick={onComplete}
+          className="w-32"
+        >
+          Complete
+        </Button>
+        <Button
+          onClick={onNext}
+          className="w-32"
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function SetsPlayer({ 
+  exercise, 
+  completedSets, 
+  onUpdateSet, 
+  onNext, 
+  onPrevious 
+}: { 
+  exercise: Exercise
+  completedSets: Exercise['completedSets']
+  onUpdateSet: (setIndex: number, field: string, value: number) => void
+  onNext: () => void
+  onPrevious: () => void
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-semibold">{exercise.name}</h3>
+        <div className="text-sm text-muted-foreground">
+          Target: {exercise.sets} sets × {exercise.reps} reps
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {completedSets.map((set, setIndex) => (
+          <div key={setIndex} className="grid grid-cols-3 gap-4">
+            <div className="flex items-center">
+              Set {set.set_number}
+            </div>
+            <Input
+              type="number"
+              placeholder="Weight (lbs)"
+              value={set.weight || ''}
+              onChange={(e) => onUpdateSet(
+                setIndex,
+                'weight',
+                Number(e.target.value)
+              )}
+            />
+            <Input
+              type="number"
+              placeholder={`Reps (target: ${exercise.reps})`}
+              value={set.reps_completed || ''}
+              onChange={(e) => onUpdateSet(
+                setIndex,
+                'reps_completed',
+                Number(e.target.value)
+              )}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          onClick={onPrevious}
+          variant="outline"
+        >
+          Previous
+        </Button>
+        <Button onClick={onNext}>
+          Next
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function CircuitWorkoutPlayer({ 
+  template,
+  currentSectionIndex,
+  currentExerciseIndex,
+  onNext,
+  onPrevious,
+  onComplete
+}: { 
+  template: Template
+  currentSectionIndex: number
+  currentExerciseIndex: number
+  onNext: () => void
+  onPrevious: () => void
+  onComplete: () => void
+}) {
+  const currentSection = template.template.sections[currentSectionIndex]
+  const currentExercise = currentSection.exercises[currentExerciseIndex]
+  const [timeLeft, setTimeLeft] = useState(currentExercise.duration || 30)
+  const [isRest, setIsRest] = useState(false)
+  const [restTimeLeft, setRestTimeLeft] = useState(currentExercise.rest || 15)
+  const [isActive, setIsActive] = useState(false)
+  const shouldProgress = useRef(false)
+
+  // Reset and start timer when exercise changes
+  useEffect(() => {
+    setTimeLeft(currentExercise.duration || 30)
+    setRestTimeLeft(currentExercise.rest || 15)
+    setIsRest(false)
+    setIsActive(true) // Automatically start the timer
+  }, [currentExercise.duration, currentExercise.rest])
+
+  // Timer effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (isActive) {
+      if (isRest) {
+        timer = setInterval(() => {
+          setRestTimeLeft((prev) => {
+            if (prev <= 1) {
+              setIsActive(false)
+              setIsRest(false)
+              shouldProgress.current = true
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      } else {
+        timer = setInterval(() => {
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              setIsRest(true)
+              setRestTimeLeft(currentExercise.rest || 15)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      }
+    }
+    return () => clearInterval(timer)
+  }, [isActive, isRest, currentExercise.duration, currentExercise.rest])
+
+  // Progression effect
+  useEffect(() => {
+    if (shouldProgress.current) {
+      shouldProgress.current = false
+      if (currentSectionIndex === template.template.sections.length - 1 && 
+          currentExerciseIndex === currentSection.exercises.length - 1) {
+        onComplete()
+      } else {
+        onNext()
+      }
+    }
+  }, [shouldProgress.current, currentSectionIndex, currentExerciseIndex, currentSection.exercises.length, template.template.sections.length, onNext, onComplete])
+
+  const toggleTimer = () => {
+    setIsActive(!isActive)
+  }
+
+  const resetTimer = () => {
+    setIsActive(false)
+    setIsRest(false)
+    setTimeLeft(currentExercise.duration || 30)
+    setRestTimeLeft(currentExercise.rest || 15)
+    setIsActive(true) // Restart the timer after reset
+  }
+
+  const totalExercises = template.template.sections.reduce(
+    (acc, section) => acc + section.exercises.length, 0
+  )
+  const currentExerciseNumber = template.template.sections
+    .slice(0, currentSectionIndex)
+    .reduce((acc, section) => acc + section.exercises.length, 0) + currentExerciseIndex + 1
+  const progress = (currentExerciseNumber / totalExercises) * 100
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col items-center space-y-4">
+        <div className={`text-8xl font-bold ${isRest ? 'text-muted-foreground' : ''}`}>
+          {isRest ? restTimeLeft : timeLeft}
+        </div>
+        <div className={`text-2xl ${isRest ? 'text-muted-foreground' : ''}`}>
+          {isRest ? 'Rest' : 'Work'} Period
+        </div>
+      </div>
+
+      <div className="flex justify-center gap-4">
+        <Button
+          variant="outline"
+          onClick={toggleTimer}
+          className="w-32"
+          size="lg"
+        >
+          {isActive ? 'Pause' : 'Start'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={resetTimer}
+          className="w-32"
+          size="lg"
+        >
+          Reset
+        </Button>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">{currentSection.name}</h2>
+          <div className="text-sm text-muted-foreground">
+            Exercise {currentExerciseNumber} of {totalExercises}
+          </div>
+        </div>
+
+        <Progress value={progress} />
+
+        <div className="text-center">
+          <h3 className="text-2xl font-bold">{currentExercise.name}</h3>
+          <p className="text-muted-foreground">
+            {currentExercise.duration}s work / {currentExercise.rest}s rest
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          variant="outline"
+          onClick={onPrevious}
+          className="w-32"
+          size="lg"
+        >
+          Previous
+        </Button>
+        {currentSectionIndex === template.template.sections.length - 1 && 
+         currentExerciseIndex === currentSection.exercises.length - 1 ? (
+          <Button 
+            onClick={onComplete}
+            className="w-32"
+            size="lg"
+          >
+            Complete
+          </Button>
+        ) : (
+          <Button 
+            onClick={onNext}
+            className="w-32"
+            size="lg"
+          >
+            Next
+          </Button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function WorkoutForm({ workoutId }: { workoutId: string }) {
@@ -206,10 +561,22 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
     }
   }
 
+  const isCircuitSection = (section: Section) => {
+    return section.type === 'circuit' || section.type === 'wod' || section.type === 'hiit' || section.type === 'tabata'
+  }
+
+  const currentSection = template?.template.sections[currentSectionIndex]
+  const isCircuit = currentSection && isCircuitSection(currentSection)
+
+  const isCircuitWorkout = template?.type === 'circuit' || 
+                          template?.type === 'wod' || 
+                          template?.type === 'hiit' || 
+                          template?.type === 'tabata'
+
   if (loading) return <div className="p-6">Loading...</div>
   if (!template) return <div className="p-6">Workout not found</div>
+  if (!currentSection) return <div className="p-6">Section not found</div>
 
-  const currentSection = template.template.sections[currentSectionIndex]
   const currentExercise = currentSection.exercises[currentExerciseIndex]
   const totalExercises = template.template.sections.reduce(
     (acc, section) => acc + section.exercises.length, 0
@@ -225,7 +592,9 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
         {/* Left Column - Input Area */}
         <div className="lg:w-2/3 space-y-6">
           <Card className="p-6">
-            <h1 className="text-2xl font-bold mb-4">{template.name}</h1>
+            <div className="flex items-center justify-between mb-4">
+              <h1 className="text-2xl font-bold">{template?.name}</h1>
+            </div>
             {!isStarted ? (
               <Button 
                 onClick={handleStart} 
@@ -235,78 +604,35 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                 Start Workout
               </Button>
             ) : (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold">{currentSection.name}</h2>
-                  <div className="text-sm text-muted-foreground">
-                    Exercise {currentExerciseNumber} of {totalExercises}
-                  </div>
-                </div>
-
-                <Progress value={progress} />
-
+              isCircuitWorkout ? (
+                <CircuitWorkoutPlayer
+                  template={template}
+                  currentSectionIndex={currentSectionIndex}
+                  currentExerciseIndex={currentExerciseIndex}
+                  onNext={nextExercise}
+                  onPrevious={previousExercise}
+                  onComplete={handleComplete}
+                />
+              ) : (
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-xl font-semibold">{currentExercise.name}</h3>
+                    <h2 className="text-xl font-semibold">{currentSection.name}</h2>
                     <div className="text-sm text-muted-foreground">
-                      Target: {currentExercise.sets} sets × {currentExercise.reps} reps
+                      Exercise {currentExerciseNumber} of {totalExercises}
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {currentExercise.completedSets.map((set, setIndex) => (
-                      <div key={setIndex} className="grid grid-cols-3 gap-4">
-                        <div className="flex items-center">
-                          Set {set.set_number}
-                        </div>
-                        <Input
-                          type="number"
-                          placeholder="Weight (lbs)"
-                          value={set.weight || ''}
-                          onChange={(e) => updateSet(
-                            setIndex,
-                            'weight',
-                            Number(e.target.value)
-                          )}
-                        />
-                        <Input
-                          type="number"
-                          placeholder={`Reps (target: ${currentExercise.reps})`}
-                          value={set.reps_completed || ''}
-                          onChange={(e) => updateSet(
-                            setIndex,
-                            'reps_completed',
-                            Number(e.target.value)
-                          )}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  <Progress value={progress} />
 
-                <div className="flex justify-between items-center mt-6">
-                  <Button
-                    onClick={previousExercise}
-                    disabled={currentSectionIndex === 0 && currentExerciseIndex === 0}
-                    variant="outline"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Previous
-                  </Button>
-
-                  {currentSectionIndex === template.template.sections.length - 1 && 
-                   currentExerciseIndex === currentSection.exercises.length - 1 ? (
-                    <Button onClick={handleComplete}>
-                      Complete Workout
-                    </Button>
-                  ) : (
-                    <Button onClick={nextExercise}>
-                      Next
-                      <ChevronRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  )}
+                  <SetsPlayer
+                    exercise={currentExercise}
+                    completedSets={currentExercise.completedSets}
+                    onUpdateSet={updateSet}
+                    onNext={nextExercise}
+                    onPrevious={previousExercise}
+                  />
                 </div>
-              </div>
+              )
             )}
           </Card>
         </div>
@@ -323,7 +649,12 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                     isStarted && sIndex === currentSectionIndex ? 'bg-muted/50 p-2 rounded-lg' : ''
                   }`}
                 >
-                  <h3 className="font-medium">{section.name}</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium">{section.name}</h3>
+                    {isCircuitSection(section) && (
+                      <Badge variant="outline">Circuit</Badge>
+                    )}
+                  </div>
                   {section.exercises.map((exercise, eIndex) => (
                     <div 
                       key={`${sIndex}-${eIndex}`} 
@@ -346,7 +677,9 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                           {exercise.name}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {exercise.sets} × {exercise.reps}
+                          {isCircuitSection(section) 
+                            ? `${exercise.duration}s / ${exercise.rest}s rest`
+                            : `${exercise.sets} × ${exercise.reps}`}
                         </span>
                       </div>
                     </div>
