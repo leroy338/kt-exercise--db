@@ -24,10 +24,13 @@ import { Input } from "@/components/ui/input"
 import { Exercise as BaseExercise } from "@/app/config/exercises"
 
 type WorkoutExercise = BaseExercise & {
-  sets: number
-  reps: number
-  rest: number
-  duration?: number
+  sets: number | null
+  reps: number | null
+  rest: number | null
+  duration?: number | null
+  section?: number
+  section_name?: string
+  order?: number
 }
 
 interface ExerciseSelectorModalProps {
@@ -89,11 +92,11 @@ export function ExerciseSelectorModal({
         setStep("details")
         if (isCircuit) {
           setDuration(editingExercise.duration?.toString() || "30")
-          setRest(editingExercise.rest.toString())
+          setRest(editingExercise.rest?.toString() || "15")
         } else {
-          setSets(editingExercise.sets.toString())
-          setReps(editingExercise.reps.toString())
-          setRest(editingExercise.rest.toString())
+          setSets(editingExercise.sets?.toString() || "3")
+          setReps(editingExercise.reps?.toString() || "10")
+          setRest(editingExercise.rest?.toString() || "60")
         }
       } else {
         setStep("exercises")
@@ -128,10 +131,13 @@ export function ExerciseSelectorModal({
     const workoutExercise: WorkoutExercise = {
       ...selectedExercise,
       type: workoutType,
-      sets: parseInt(sets),
-      reps: parseInt(reps),
-      rest: parseInt(rest),
-      ...(isCircuit ? { duration: parseInt(duration) } : {})
+      sets: parseInt(sets) || null,
+      reps: parseInt(reps) || null,
+      rest: parseInt(rest) || null,
+      ...(isCircuit ? { duration: parseInt(duration) || null } : {}),
+      section: 1,
+      section_name: "Default Section",
+      order: 1
     }
     
     onExerciseSelect(workoutExercise)

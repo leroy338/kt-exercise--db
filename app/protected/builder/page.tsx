@@ -39,10 +39,10 @@ import { saveTemplate } from "@/app/actions/save-template"
 import { Exercise as BaseExercise, exercises } from "@/app/config/exercises"
 
 type WorkoutExercise = BaseExercise & {
-  sets: number
-  reps: number
-  rest: number
-  duration?: number
+  sets: number | null
+  reps: number | null
+  rest: number | null
+  duration?: number | null
   section?: number
   section_name?: string
   order?: number
@@ -52,6 +52,7 @@ interface WorkoutItem {
   type: 'exercise' | 'section'
   data: WorkoutExercise | null
   title?: string
+  sectionType?: string
 }
 
 interface SavedWorkout {
@@ -176,10 +177,16 @@ export default function BuilderPage() {
   const [activeTab, setActiveTab] = useState("builder")
   const [selectedSectionType, setSelectedSectionType] = useState<string>()
   const [selectedBuilderType, setSelectedBuilderType] = useState<'sets' | 'time' | 'circuit'>('sets')
+  const [activeSectionIndex, setActiveSectionIndex] = useState<number | null>(null)
 
   const getNextSectionNumber = () => {
     const sections = workoutItems.filter(item => item.type === 'section')
     return sections.length + 1
+  }
+
+  const getSectionTitle = (index: number) => {
+    if (index === 0) return "Warmup"
+    return `Movement ${index}`
   }
 
   const handleExerciseSelect = (exercise: WorkoutExercise) => {
@@ -195,7 +202,7 @@ export default function BuilderPage() {
       // Add new exercise
       if (workoutItems.length === 0) {
         setWorkoutItems([
-          { type: 'section', data: null, title: `Section ${getNextSectionNumber()}` },
+          { type: 'section', data: null, title: getSectionTitle(getNextSectionNumber() - 1) },
           { type: 'exercise', data: exercise }
         ])
       } else {
@@ -205,11 +212,13 @@ export default function BuilderPage() {
   }
 
   const handleAddSection = () => {
+    const newSectionIndex = workoutItems.length
     setWorkoutItems(prev => [...prev, { 
       type: 'section', 
       data: null, 
-      title: `Section ${getNextSectionNumber()}` 
+      title: getSectionTitle(getNextSectionNumber() - 1)
     }])
+    setActiveSectionIndex(newSectionIndex)
   }
 
   const handleSectionTitleChange = (index: number, title: string) => {
@@ -246,6 +255,30 @@ export default function BuilderPage() {
 
   const handleRemoveExercise = (index: number) => {
     setWorkoutItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleRemoveSection = (sectionIndex: number) => {
+    // Find the next section index or the end of the array
+    let nextSectionIndex = -1
+    for (let i = sectionIndex + 1; i < workoutItems.length; i++) {
+      if (workoutItems[i].type === 'section') {
+        nextSectionIndex = i
+        break
+      }
+    }
+    
+    // If there's no next section, remove everything from this section to the end
+    if (nextSectionIndex === -1) {
+      setWorkoutItems(prev => prev.slice(0, sectionIndex))
+      return
+    }
+    
+    // Remove all items between this section and the next section
+    setWorkoutItems(prev => {
+      const newItems = [...prev]
+      newItems.splice(sectionIndex, nextSectionIndex - sectionIndex)
+      return newItems
+    })
   }
 
   const handleSaveTemplate = async () => {
@@ -601,8 +634,45 @@ export default function BuilderPage() {
     }
   }
 
+  const handleSectionTypeChange = (sectionIndex: number, newType: string) => {
+    setWorkoutItems(prev => prev.map((item, index) => {
+      if (item.type === 'section' && index === sectionIndex) {
+        return {
+          ...item,
+          sectionType: newType
+        }
+      }
+      return item
+    }))
+    setActiveSectionIndex(sectionIndex)
+  }
+
+  const getActiveSectionType = () => {
+    if (activeSectionIndex !== null) {
+      const section = workoutItems[activeSectionIndex]
+      if (section && section.type === 'section') {
+        return section.sectionType || workoutType
+      }
+    }
+    return workoutType
+  }
+
+  const handleAddExerciseClick = () => {
+    // Find the current section index
+    let currentSectionIndex = -1
+    for (let i = workoutItems.length - 1; i >= 0; i--) {
+      if (workoutItems[i].type === 'section') {
+        currentSectionIndex = i
+        break
+      }
+    }
+    
+    setActiveSectionIndex(currentSectionIndex)
+    setIsModalOpen(true)
+  }
+
   return (
-    <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8">
+    <div className="container mx-auto px-4 md:px-6 pt-20 pb-6 space-y-8 transform-gpu">
       <h2 className="text-2xl font-semibold">Builder</h2>
       <p>
         The builder is a tool that allows you to create your own workouts.
@@ -701,98 +771,210 @@ export default function BuilderPage() {
               {workoutItems.length > 0 ? (
                 <div className="space-y-4">
                   {selectedBuilderType === 'sets' ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Exercise</TableHead>
-                          <TableHead>Sets</TableHead>
-                          <TableHead>Reps</TableHead>
-                          <TableHead>Rest</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {workoutItems.map((item, index) => (
-                          item.type === 'section' ? (
-                            <TableRow key={`section-${index}`}>
-                              <TableCell colSpan={5}>
-                                <div className="flex items-center gap-4">
-                                  <Input 
-                                    placeholder="Section title"
-                                    className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
-                                    value={item.title || ''}
-                                    onChange={(e) => handleSectionTitleChange(index, e.target.value)}
-                                  />
-                                  <Select value={selectedSectionType} onValueChange={handleWorkoutTypeSelect}>
-                                    <SelectTrigger className="w-[140px]">
-                                      <SelectValue placeholder="Select type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {workoutTypes.map((type) => (
-                                        <SelectItem key={type.id} value={type.id}>
-                                          {type.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            <TableRow 
-                              key={`${item.data?.name}-${index}`}
-                              className={cn(
-                                "cursor-pointer hover:bg-muted/50",
-                                editingExerciseIndex === index && "bg-muted/50"
-                              )}
-                              onClick={() => handleRowClick(index)}
-                            >
-                              <TableCell>{item.data?.name}</TableCell>
-                              <TableCell>{item.data?.sets}</TableCell>
-                              <TableCell>{item.data?.reps}</TableCell>
-                              <TableCell>{item.data?.rest}s</TableCell>
-                              <TableCell>
-                                <div className="flex justify-end gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleRowClick(index)
-                                    }}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleRemoveExercise(index)
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <div className="space-y-4">
+                      {workoutItems.map((item, index) => (
+                        item.type === 'section' ? (
+                          <div key={`section-${index}`} className="space-y-2">
+                            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+                              <Input 
+                                placeholder={getSectionTitle(index)}
+                                className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
+                                value={item.title || getSectionTitle(index)}
+                                onChange={(e) => handleSectionTitleChange(index, e.target.value)}
+                              />
+                              <Select 
+                                value={item.sectionType || workoutType} 
+                                onValueChange={(value) => handleSectionTypeChange(index, value)}
+                              >
+                                <SelectTrigger className="w-[140px]">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {workoutTypes.map((type) => (
+                                    <SelectItem key={type.id} value={type.id}>
+                                      {type.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="ml-auto text-destructive"
+                                onClick={() => handleRemoveSection(index)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Exercise</TableHead>
+                                  {workoutTypes.find(t => t.id === (item.sectionType || workoutType))?.builder === 'sets' ? (
+                                    <>
+                                      <TableHead>Sets</TableHead>
+                                      <TableHead>Reps</TableHead>
+                                      <TableHead>Rest</TableHead>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <TableHead>Work</TableHead>
+                                      <TableHead>Rest</TableHead>
+                                    </>
+                                  )}
+                                  <TableHead className="w-[100px]"></TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {workoutItems
+                                  .slice(index + 1)
+                                  .filter((item) => item.type !== 'section')
+                                  .map((exerciseItem, exerciseIndex) => (
+                                    <TableRow 
+                                      key={`${exerciseItem.data?.name}-${exerciseIndex}`}
+                                      className={cn(
+                                        "cursor-pointer hover:bg-muted/50",
+                                        editingExerciseIndex === index + exerciseIndex + 1 && "bg-muted/50"
+                                      )}
+                                      onClick={() => handleRowClick(index + exerciseIndex + 1)}
+                                    >
+                                      <TableCell>{exerciseItem.data?.name}</TableCell>
+                                      {workoutTypes.find(t => t.id === (item.sectionType || workoutType))?.builder === 'sets' ? (
+                                        <>
+                                          <TableCell>
+                                            <Input
+                                              type="number"
+                                              className="w-20"
+                                              value={exerciseItem.data?.sets ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                setWorkoutItems(prev => prev.map((item, i) => 
+                                                  i === index + exerciseIndex + 1 ? {
+                                                    ...item,
+                                                    data: item.data ? { ...item.data, sets: value } : null
+                                                  } : item
+                                                ))
+                                              }}
+                                            />
+                                          </TableCell>
+                                          <TableCell>
+                                            <Input
+                                              type="number"
+                                              className="w-20"
+                                              value={exerciseItem.data?.reps ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                setWorkoutItems(prev => prev.map((item, i) => 
+                                                  i === index + exerciseIndex + 1 ? {
+                                                    ...item,
+                                                    data: item.data ? { ...item.data, reps: value } : null
+                                                  } : item
+                                                ))
+                                              }}
+                                            />
+                                          </TableCell>
+                                          <TableCell>
+                                            <Input
+                                              type="number"
+                                              className="w-20"
+                                              value={exerciseItem.data?.rest ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                setWorkoutItems(prev => prev.map((item, i) => 
+                                                  i === index + exerciseIndex + 1 ? {
+                                                    ...item,
+                                                    data: item.data ? { ...item.data, rest: value } : null
+                                                  } : item
+                                                ))
+                                              }}
+                                            />s
+                                          </TableCell>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <TableCell>
+                                            <Input
+                                              type="number"
+                                              className="w-20"
+                                              value={exerciseItem.data?.duration ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                setWorkoutItems(prev => prev.map((item, i) => 
+                                                  i === index + exerciseIndex + 1 ? {
+                                                    ...item,
+                                                    data: item.data ? { ...item.data, duration: value } : null
+                                                  } : item
+                                                ))
+                                              }}
+                                            />s
+                                          </TableCell>
+                                          <TableCell>
+                                            <Input
+                                              type="number"
+                                              className="w-20"
+                                              value={exerciseItem.data?.rest ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                setWorkoutItems(prev => prev.map((item, i) => 
+                                                  i === index + exerciseIndex + 1 ? {
+                                                    ...item,
+                                                    data: item.data ? { ...item.data, rest: value } : null
+                                                  } : item
+                                                ))
+                                              }}
+                                            />s
+                                          </TableCell>
+                                        </>
+                                      )}
+                                      <TableCell>
+                                        <div className="flex justify-end gap-2">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleRowClick(index + exerciseIndex + 1)
+                                            }}
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-destructive"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleRemoveExercise(index + exerciseIndex + 1)
+                                            }}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ) : null
+                      ))}
+                    </div>
                   ) : (
                     <div className="space-y-4">
                       {workoutItems.map((item, index) => (
                         item.type === 'section' ? (
                           <div key={`section-${index}`} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
                             <Input 
-                              placeholder="Section title"
+                              placeholder={getSectionTitle(index)}
                               className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
-                              value={item.title || ''}
+                              value={item.title || getSectionTitle(index)}
                               onChange={(e) => handleSectionTitleChange(index, e.target.value)}
                             />
-                            <Select value={selectedSectionType} onValueChange={handleWorkoutTypeSelect}>
+                            <Select 
+                              value={item.sectionType || workoutType} 
+                              onValueChange={(value) => handleSectionTypeChange(index, value)}
+                            >
                               <SelectTrigger className="w-[140px]">
                                 <SelectValue placeholder="Select type" />
                               </SelectTrigger>
@@ -804,6 +986,14 @@ export default function BuilderPage() {
                                 ))}
                               </SelectContent>
                             </Select>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="ml-auto text-destructive"
+                              onClick={() => handleRemoveSection(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         ) : (
                           <Card key={`${item.data?.name}-${index}`} className="p-4">
@@ -812,20 +1002,18 @@ export default function BuilderPage() {
                                 <h4 className="font-medium">{item.data?.name}</h4>
                                 <div className="flex items-center gap-4">
                                   <div className="space-y-1">
-                                    <Label>Duration (seconds)</Label>
+                                    <Label>Work (seconds)</Label>
                                     <Input
                                       type="number"
-                                      value={item.data?.duration || 30}
+                                      value={item.data?.duration ?? ''}
                                       onChange={(e) => {
-                                        const newDuration = parseInt(e.target.value)
-                                        if (!isNaN(newDuration)) {
-                                          setWorkoutItems(prev => prev.map((item, i) => 
-                                            i === index ? {
-                                              ...item,
-                                              data: item.data ? { ...item.data, duration: newDuration } : null
-                                            } : item
-                                          ))
-                                        }
+                                        const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                        setWorkoutItems(prev => prev.map((item, i) => 
+                                          i === index ? {
+                                            ...item,
+                                            data: item.data ? { ...item.data, duration: value } : null
+                                          } : item
+                                        ))
                                       }}
                                       className="w-24"
                                     />
@@ -834,17 +1022,15 @@ export default function BuilderPage() {
                                     <Label>Rest (seconds)</Label>
                                     <Input
                                       type="number"
-                                      value={item.data?.rest || 15}
+                                      value={item.data?.rest ?? ''}
                                       onChange={(e) => {
-                                        const newRest = parseInt(e.target.value)
-                                        if (!isNaN(newRest)) {
-                                          setWorkoutItems(prev => prev.map((item, i) => 
-                                            i === index ? {
-                                              ...item,
-                                              data: item.data ? { ...item.data, rest: newRest } : null
-                                            } : item
-                                          ))
-                                        }
+                                        const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                        setWorkoutItems(prev => prev.map((item, i) => 
+                                          i === index ? {
+                                            ...item,
+                                            data: item.data ? { ...item.data, rest: value } : null
+                                          } : item
+                                        ))
                                       }}
                                       className="w-24"
                                     />
@@ -880,7 +1066,7 @@ export default function BuilderPage() {
                     <Button 
                       className="flex-1" 
                       variant="outline"
-                      onClick={() => setIsModalOpen(true)}
+                      onClick={handleAddExerciseClick}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Add Exercise
@@ -895,13 +1081,41 @@ export default function BuilderPage() {
                   </div>
                 </div>
               ) : (
-                <Button 
-                  className="w-full" 
-                  onClick={() => setIsModalOpen(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Exercise
-                </Button>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 p-4 border rounded-lg">
+                    <Input 
+                      placeholder="Section title"
+                      className="max-w-[200px] font-semibold border-none focus:border-input hover:border-input p-0"
+                      value="Warmup"
+                      readOnly
+                    />
+                    <Select 
+                      value={workoutType} 
+                      onValueChange={handleWorkoutTypeSelect}
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workoutTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => {
+                      handleAddSection();
+                      setIsModalOpen(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Exercise
+                  </Button>
+                </div>
               )}
 
               <ExerciseSelectorModal
@@ -911,7 +1125,7 @@ export default function BuilderPage() {
                   if (!open) setEditingExerciseIndex(null)
                 }}
                 onExerciseSelect={handleExerciseSelect}
-                workoutType={workoutType}
+                workoutType={getActiveSectionType()}
                 editingExercise={editingExerciseIndex !== null ? workoutItems[editingExerciseIndex].data || undefined : undefined}
               />
             </div>

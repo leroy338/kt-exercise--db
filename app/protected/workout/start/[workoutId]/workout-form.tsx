@@ -220,147 +220,183 @@ function SetsPlayer({
 }
 
 function CircuitWorkoutPlayer({ 
-  template,
-  currentSectionIndex,
-  currentExerciseIndex,
-  onNext,
-  onPrevious,
-  onComplete
+  template, 
+  currentSectionIndex, 
+  currentExerciseIndex, 
+  onNext, 
+  onPrevious, 
+  onComplete,
+  onResetToFirstExercise
 }: { 
-  template: Template
-  currentSectionIndex: number
-  currentExerciseIndex: number
-  onNext: () => void
-  onPrevious: () => void
-  onComplete: () => void
+  template: Template, 
+  currentSectionIndex: number, 
+  currentExerciseIndex: number, 
+  onNext: () => void, 
+  onPrevious: () => void, 
+  onComplete: () => void,
+  onResetToFirstExercise: () => void
 }) {
-  const currentSection = template.template.sections[currentSectionIndex]
-  const currentExercise = currentSection.exercises[currentExerciseIndex]
-  const [timeLeft, setTimeLeft] = useState(currentExercise.duration || 30)
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [isRest, setIsRest] = useState(false)
-  const [restTimeLeft, setRestTimeLeft] = useState(currentExercise.rest || 15)
-  const [isActive, setIsActive] = useState(false)
-  const shouldProgress = useRef(false)
+  const [isActive, setIsActive] = useState(true) // Start active by default
+  const [completedSets, setCompletedSets] = useState(0)
+  const [isLastExercise, setIsLastExercise] = useState(false)
+  const [isLastSection, setIsLastSection] = useState(false)
+  const [sectionCompleted, setSectionCompleted] = useState(false)
+  const [shouldMoveToNext, setShouldMoveToNext] = useState(false)
 
-  // Reset and start timer when exercise changes
+  const currentSection = template.template.sections[currentSectionIndex]
+  const currentExercise = currentSection?.exercises[currentExerciseIndex]
+  const totalExercises = currentSection?.exercises.length || 0
+
   useEffect(() => {
-    setTimeLeft(currentExercise.duration || 30)
-    setRestTimeLeft(currentExercise.rest || 15)
+    // Reset state when exercise changes
+    if (currentExercise) {
+      setTimeLeft(currentExercise.duration || 30)
+    } else {
+      setTimeLeft(null)
+    }
     setIsRest(false)
-    setIsActive(true) // Automatically start the timer
-  }, [currentExercise.duration, currentExercise.rest])
+    setIsActive(true) // Keep active when changing exercises
+    setIsLastExercise(currentExerciseIndex === totalExercises - 1)
+    setIsLastSection(currentSectionIndex === template.template.sections.length - 1)
+    setSectionCompleted(false)
+    setShouldMoveToNext(false)
+  }, [currentExerciseIndex, currentSectionIndex, totalExercises, template.template.sections.length, currentExercise])
 
-  // Timer effect
+  // Handle moving to next exercise when shouldMoveToNext is true
   useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (isActive) {
-      if (isRest) {
-        timer = setInterval(() => {
-          setRestTimeLeft((prev) => {
-            if (prev <= 1) {
-              setIsActive(false)
+    if (shouldMoveToNext) {
+      onNext()
+      setShouldMoveToNext(false)
+    }
+  }, [shouldMoveToNext, onNext])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    if (isActive && timeLeft !== null && currentExercise) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev === null) return null
+          if (prev <= 1) {
+            if (isRest) {
+              // Rest period finished, start next exercise or set
               setIsRest(false)
-              shouldProgress.current = true
-              return 0
-            }
-            return prev - 1
-          })
-        }, 1000)
-      } else {
-        timer = setInterval(() => {
-          setTimeLeft((prev) => {
-            if (prev <= 1) {
+              if (isLastExercise) {
+                // Last exercise completed, mark section as completed
+                setSectionCompleted(true)
+                return null
+              } else {
+                // Move to next exercise
+                setShouldMoveToNext(true)
+                return null
+              }
+            } else {
+              // Work period finished, start rest
               setIsRest(true)
-              setRestTimeLeft(currentExercise.rest || 15)
-              return 0
+              return currentExercise.rest || 15
             }
-            return prev - 1
-          })
-        }, 1000)
-      }
+          }
+          return prev - 1
+        })
+      }, 1000)
     }
-    return () => clearInterval(timer)
-  }, [isActive, isRest, currentExercise.duration, currentExercise.rest])
 
-  // Progression effect
-  useEffect(() => {
-    if (shouldProgress.current) {
-      shouldProgress.current = false
-      if (currentSectionIndex === template.template.sections.length - 1 && 
-          currentExerciseIndex === currentSection.exercises.length - 1) {
-        onComplete()
-      } else {
-        onNext()
-      }
+    return () => {
+      if (interval) clearInterval(interval)
     }
-  }, [shouldProgress.current, currentSectionIndex, currentExerciseIndex, currentSection.exercises.length, template.template.sections.length, onNext, onComplete])
+  }, [isActive, timeLeft, isRest, currentExercise, isLastExercise])
 
   const toggleTimer = () => {
     setIsActive(!isActive)
   }
 
-  const resetTimer = () => {
-    setIsActive(false)
-    setIsRest(false)
-    setTimeLeft(currentExercise.duration || 30)
-    setRestTimeLeft(currentExercise.rest || 15)
-    setIsActive(true) // Restart the timer after reset
+  const handleNext = () => {
+    if (sectionCompleted) {
+      if (isLastSection) {
+        onComplete()
+      } else {
+        onNext()
+      }
+    } else {
+      // Move to the next exercise
+      onNext()
+    }
   }
 
-  const totalExercises = template.template.sections.reduce(
-    (acc, section) => acc + section.exercises.length, 0
-  )
-  const currentExerciseNumber = template.template.sections
-    .slice(0, currentSectionIndex)
-    .reduce((acc, section) => acc + section.exercises.length, 0) + currentExerciseIndex + 1
-  const progress = (currentExerciseNumber / totalExercises) * 100
+  const handleAddSet = () => {
+    // Increment the completed sets counter
+    setCompletedSets(prev => prev + 1)
+    
+    // Reset to the first exercise in the section
+    // Reset the timer for the first exercise
+    if (currentSection?.exercises[0]) {
+      setTimeLeft(currentSection.exercises[0].duration || 30)
+    }
+    
+    setIsRest(false)
+    setIsActive(true)
+    setSectionCompleted(false)
+    
+    // Call onResetToFirstExercise to reset to the first exercise in the section
+    onResetToFirstExercise()
+  }
+
+  if (!currentExercise) {
+    return null
+  }
+
+  const progress = ((currentExerciseIndex + 1) / totalExercises) * 100
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center space-y-4">
-        <div className={`text-8xl font-bold ${isRest ? 'text-muted-foreground' : ''}`}>
-          {isRest ? restTimeLeft : timeLeft}
-        </div>
-        <div className={`text-2xl ${isRest ? 'text-muted-foreground' : ''}`}>
-          {isRest ? 'Rest' : 'Work'} Period
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">{currentSection.name}</h2>
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-muted-foreground">
+            Exercise {currentExerciseIndex + 1} of {totalExercises}
+          </div>
+          <div className="bg-primary/10 text-primary px-2 py-1 rounded-md text-sm font-medium">
+            Set {completedSets + 1}
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-center gap-4">
+      <Progress value={progress} />
+
+      <div className="text-center">
+        <h3 className="text-2xl font-bold">{currentExercise.name}</h3>
+        <p className="text-muted-foreground">
+          {currentExercise.duration || 30}s work / {currentExercise.rest || 15}s rest
+        </p>
+      </div>
+
+      <div className="flex flex-col items-center space-y-4">
+        <div className="text-6xl font-bold">
+          {timeLeft !== null ? timeLeft : '--'}
+        </div>
+        <div className="flex items-center gap-2">
+          {isRest ? (
+            <div className="bg-blue-500/10 text-blue-500 px-3 py-1 rounded-md text-sm font-medium">
+              Rest Period
+            </div>
+          ) : (
+            <div className="bg-red-500/10 text-red-500 px-3 py-1 rounded-md text-sm font-medium">
+              Work Period
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-center">
         <Button
           variant="outline"
           onClick={toggleTimer}
           className="w-32"
-          size="lg"
         >
-          {isActive ? 'Pause' : 'Start'}
+          {isActive ? 'Pause' : 'Resume'}
         </Button>
-        <Button
-          variant="outline"
-          onClick={resetTimer}
-          className="w-32"
-          size="lg"
-        >
-          Reset
-        </Button>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">{currentSection.name}</h2>
-          <div className="text-sm text-muted-foreground">
-            Exercise {currentExerciseNumber} of {totalExercises}
-          </div>
-        </div>
-
-        <Progress value={progress} />
-
-        <div className="text-center">
-          <h3 className="text-2xl font-bold">{currentExercise.name}</h3>
-          <p className="text-muted-foreground">
-            {currentExercise.duration}s work / {currentExercise.rest}s rest
-          </p>
-        </div>
       </div>
 
       <div className="flex justify-between items-center mt-6">
@@ -372,22 +408,31 @@ function CircuitWorkoutPlayer({
         >
           Previous
         </Button>
-        {currentSectionIndex === template.template.sections.length - 1 && 
-         currentExerciseIndex === currentSection.exercises.length - 1 ? (
-          <Button 
-            onClick={onComplete}
-            className="w-32"
-            size="lg"
-          >
-            Complete
-          </Button>
+        {sectionCompleted ? (
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleNext}
+              className="w-40"
+              size="lg"
+              variant="outline"
+            >
+              {isLastSection ? "Complete Workout" : "Next Section"}
+            </Button>
+            <Button 
+              onClick={handleAddSet}
+              className="w-40"
+              size="lg"
+            >
+              Add a Set
+            </Button>
+          </div>
         ) : (
           <Button 
-            onClick={onNext}
-            className="w-32"
+            onClick={handleNext}
+            className="w-40"
             size="lg"
           >
-            Next
+            Next Exercise
           </Button>
         )}
       </div>
@@ -573,6 +618,10 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                           template?.type === 'hiit' || 
                           template?.type === 'tabata'
 
+  const resetToFirstExercise = () => {
+    setCurrentExerciseIndex(0)
+  }
+
   if (loading) return <div className="p-6">Loading...</div>
   if (!template) return <div className="p-6">Workout not found</div>
   if (!currentSection) return <div className="p-6">Section not found</div>
@@ -612,6 +661,7 @@ export function WorkoutForm({ workoutId }: { workoutId: string }) {
                   onNext={nextExercise}
                   onPrevious={previousExercise}
                   onComplete={handleComplete}
+                  onResetToFirstExercise={resetToFirstExercise}
                 />
               ) : (
                 <div className="space-y-6">
