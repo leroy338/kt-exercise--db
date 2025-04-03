@@ -7,13 +7,10 @@ import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { ChevronRight, Clock } from "lucide-react"
 import Link from "next/link"
+import { getUserTimezone, getStartOfDay, getEndOfDay, convertToUserTimezone } from "@/utils/date"
+import type { Database } from "@/types/database.types"
 
-interface ScheduledWorkout {
-  id: string
-  scheduled_for: string
-  start_time: string | null
-  end_time: string | null
-  template_id: number | null
+type ScheduledWorkout = Database['public']['Tables']['scheduled_workouts']['Row'] & {
   template: {
     name: string
     type: string
@@ -28,49 +25,100 @@ interface ScheduledWorkout {
         }[]
       }[]
     }
-  }
+  } | null
 }
 
 export function TodaysWorkouts() {
   const [workouts, setWorkouts] = useState<ScheduledWorkout[]>([])
+  const [loading, setLoading] = useState(true)
   const supabase = createClient()
-  const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
     async function fetchTodaysWorkouts() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
 
-      const { data, error } = await supabase
-        .from('scheduled_workouts')
-        .select(`
-          *,
-          template:templates (
-            name,
-            type,
-            template
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('scheduled_for', today)
-        .order('start_time')
+        // Get user's timezone
+        const timezone = await getUserTimezone()
+        const now = new Date()
+        
+        // Get start and end of today in user's timezone
+        const startOfToday = getStartOfDay(now, timezone)
+        const endOfToday = getEndOfDay(now, timezone)
 
-      if (error) {
-        console.error('Error fetching workouts:', error)
-        return
+        console.log('Fetching workouts:', {
+          userId: user.id,
+          timezone,
+          startOfToday: startOfToday.toISOString(),
+          endOfToday: endOfToday.toISOString(),
+          currentTime: new Date().toISOString()
+        })
+
+        // Query scheduled_workouts table with exact schema match
+        const { data, error } = await supabase
+          .from('scheduled_workouts')
+          .select(`
+            *,
+            template:templates (
+              id,
+              name,
+              type,
+              template
+            )
+          `)
+          .eq('user_id', user.id)
+          .gte('scheduled_for', startOfToday.toISOString())
+          .lte('scheduled_for', endOfToday.toISOString())
+
+        if (error) {
+          console.error('Error fetching workouts:', error)
+          return
+        }
+
+        console.log('Raw database response:', data)
+
+        // Convert the scheduled_for dates back to user's timezone for display
+        const workoutsInUserTimezone = data.map(workout => ({
+          ...workout,
+          scheduled_for: new Date(workout.scheduled_for).toISOString()
+        }))
+
+        console.log('Processed workouts:', workoutsInUserTimezone)
+        setWorkouts(workoutsInUserTimezone)
+      } catch (error) {
+        console.error('Error in fetchTodaysWorkouts:', error)
+      } finally {
+        setLoading(false)
       }
-
-      setWorkouts(data)
     }
 
     fetchTodaysWorkouts()
-  }, [supabase, today])
+
+    // Refresh workouts every minute
+    const interval = setInterval(fetchTodaysWorkouts, 60000)
+    return () => clearInterval(interval)
+  }, [supabase])
+
+  if (loading) {
+    return (
+      <Card className="overflow-hidden">
+        <div className="p-4 sm:p-6">
+          <p className="text-sm text-muted-foreground">Loading workouts...</p>
+        </div>
+      </Card>
+    )
+  }
 
   return (
     <Card className="overflow-hidden">
-      {/* Card Header */}
       <div className="p-4 sm:p-6 border-b">
-        <h2 className="text-lg font-semibold">Today's Workouts</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Today's Workouts</h2>
+          <span className="text-sm text-emerald-700">
+            {format(new Date(), 'EEEE, MMMM d')}
+          </span>
+        </div>
       </div>
 
       {workouts.length === 0 ? (
